@@ -1,0 +1,8 @@
+node_modules
+.git
+.env
+blockchain/artifacts
+blockchain/cache
+frontend/dist
+backend/data/*.tmp
+*.log

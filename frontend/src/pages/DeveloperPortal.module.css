@@ -1,0 +1,193 @@
+.portalContainer {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 6rem;
+}
+
+.headerSection {
+  margin-bottom: 2.5rem;
+}
+
+.headerSection h1 {
+  font-size: 2.5rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #fff 0%, #38bdf8 50%, #6366f1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 0.5rem;
+}
+
+.headerSection p {
+  color: #94a3b8;
+  font-size: 1.05rem;
+}
+
+.gridSection {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+}
+
+@media (max-width: 900px) {
+  .gridSection {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel {
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 1.75rem;
+}
+
+.panelTitle {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #f8fafc;
+  margin-bottom: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.generateBtn {
+  background: linear-gradient(135deg, #0284c7, #6366f1);
+  color: #ffffff;
+  border: none;
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.generateBtn:hover {
+  opacity: 0.9;
+}
+
+.keyList {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.keyCard {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 1rem;
+}
+
+.keyHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.keyName {
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.keyRevokeBtn {
+  background: transparent;
+  color: #f87171;
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  border-radius: 6px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.keyRevokeBtn:hover {
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.keyCode {
+  font-family: monospace;
+  background: rgba(15, 23, 42, 0.8);
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  color: #38bdf8;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+  display: inline-block;
+}
+
+.keyMeta {
+  display: flex;
+  gap: 1.5rem;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.codeBox {
+  background: #090d16;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 1.2rem;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.85rem;
+  color: #a5f3fc;
+  overflow-x: auto;
+  line-height: 1.5;
+  margin-top: 1rem;
+}
+
+.tabBar {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 0.5rem;
+}
+
+.tabBtn {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-weight: 600;
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.tabBtnActive {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+}
+
+.playgroundForm {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.playgroundForm textarea {
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 0.8rem;
+  color: #fff;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.runBtn {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  border: none;
+  padding: 0.75rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.runBtn:hover {
+  opacity: 0.9;
+}

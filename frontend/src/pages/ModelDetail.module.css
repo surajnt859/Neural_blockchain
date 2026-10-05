@@ -1,0 +1,318 @@
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text2);
+  font-size: 0.9rem;
+  margin-bottom: 1.5rem;
+  transition: color 0.2s;
+  text-decoration: none;
+}
+
+.backLink:hover {
+  color: var(--cyan);
+}
+
+/* Header Section */
+.header {
+  background: rgba(14, 18, 28, 0.85);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 245, 196, 0.15);
+  border-radius: var(--radius);
+  padding: 2.2rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+.headerContent {
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.headerIcon {
+  font-size: 3.5rem;
+  width: 90px;
+  height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 245, 196, 0.08);
+  border: 1px solid rgba(0, 245, 196, 0.25);
+  border-radius: 20px;
+  flex-shrink: 0;
+  box-shadow: 0 0 20px rgba(0, 245, 196, 0.1);
+}
+
+.headerInfo {
+  flex: 1;
+  min-width: 300px;
+}
+
+.badges {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: clamp(1.8rem, 3.5vw, 2.4rem);
+  font-weight: 800;
+  margin-bottom: 0.4rem;
+  letter-spacing: -0.02em;
+}
+
+.creator {
+  color: var(--text2);
+  margin-bottom: 0.8rem;
+  font-size: 0.95rem;
+}
+
+.rating {
+  display: flex;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+  color: var(--text2);
+}
+
+/* Price & Action Card */
+.priceActionBox {
+  min-width: 280px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  align-items: stretch;
+}
+
+.priceDisplay {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.ethPrice {
+  font-size: 1.7rem;
+  font-weight: 800;
+  color: var(--cyan);
+  font-family: var(--font-mono);
+}
+
+.neuralPrice {
+  font-size: 0.85rem;
+  color: var(--purple-light);
+  font-weight: 600;
+}
+
+.buyButton {
+  width: 100%;
+  justify-content: center;
+  padding: 12px 20px;
+  font-size: 1rem;
+  font-weight: 700;
+  box-shadow: 0 0 20px rgba(0, 245, 196, 0.3);
+}
+
+/* Highlight Bar */
+.highlightStrip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.highlightCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1rem 1.2rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(14, 18, 28, 0.6);
+  backdrop-filter: blur(12px);
+}
+
+.highlightCard span {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+  font-weight: 600;
+}
+
+.highlightCard strong {
+  font-size: 1.05rem;
+  color: var(--text);
+}
+
+/* Tabs */
+.tabsContainer {
+  margin-bottom: 1.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+
+.tab {
+  background: transparent;
+  border: none;
+  color: var(--text2);
+  padding: 0.75rem 1.25rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 10px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tabActive {
+  background: rgba(0, 245, 196, 0.12);
+  color: var(--cyan);
+  border-bottom: 2px solid var(--cyan);
+}
+
+.tabContentArea {
+  margin-bottom: 3rem;
+}
+
+.specGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.specItem {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.specItem label {
+  font-size: 0.75rem;
+  color: var(--text3);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.specItem span {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.codeSnippet {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  color: var(--cyan);
+  display: block;
+  word-break: break-all;
+}
+
+/* Sandbox Box */
+.sandboxResultBox {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(0, 245, 196, 0.2);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-top: 1.5rem;
+}
+
+.sandboxOutput {
+  background: #090d16;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 1rem;
+  color: #a5f3fc;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+/* Multi-tier selection */
+.tierCardsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.tierCard {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.tierCardSelected {
+  border-color: #00f5c4;
+  background: rgba(0, 245, 196, 0.08);
+  box-shadow: 0 0 15px rgba(0, 245, 196, 0.2);
+}
+
+.tierTitle {
+  font-weight: 700;
+  color: #fff;
+  font-size: 0.95rem;
+  margin-bottom: 0.25rem;
+}
+
+.tierPrice {
+  font-weight: 800;
+  color: var(--cyan);
+  font-size: 1.1rem;
+  margin-top: 0.5rem;
+}
+
+/* Payment Mode Tabs */
+.paymentModeTabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.2rem;
+}
+
+.paymentModeBtn {
+  flex: 1;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text2);
+  padding: 0.6rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-align: center;
+  transition: all 0.2s;
+}
+
+.paymentModeBtnActive {
+  background: rgba(0, 245, 196, 0.15);
+  border-color: #00f5c4;
+  color: #fff;
+}

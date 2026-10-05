@@ -1,0 +1,178 @@
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+}
+
+.headerTitleArea {
+    flex: 1;
+    min-width: 300px;
+}
+
+.eyebrow {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--cyan);
+    margin-bottom: 0.4rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.walletHealthCard {
+    background: rgba(14, 18, 28, 0.7);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(0, 245, 196, 0.2);
+    border-radius: 14px;
+    padding: 12px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.walletStatusPill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.greenDot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--cyan);
+    box-shadow: 0 0 8px var(--cyan);
+}
+
+/* Metric Cards */
+.metricCard {
+    background: rgba(14, 18, 28, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 16px;
+    padding: 1.2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    transition: transform 0.2s, border-color 0.2s;
+}
+
+.metricCard:hover {
+    transform: translateY(-2px);
+    border-color: rgba(0, 245, 196, 0.3);
+}
+
+.metricLabel {
+    font-size: 0.8rem;
+    color: var(--text3);
+    font-weight: 600;
+}
+
+.metricValue {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: var(--cyan);
+    font-family: var(--font-mono);
+}
+
+.metricSub {
+    font-size: 0.75rem;
+    color: var(--text2);
+    margin-top: 2px;
+}
+
+/* Tabs */
+.tabsNav {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 8px;
+    overflow-x: auto;
+}
+
+.tabBtn {
+    padding: 10px 18px;
+    border-radius: 10px;
+    border: none;
+    background: transparent;
+    color: var(--text2);
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.tabBtn:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.tabBtnActive {
+    color: var(--cyan) !important;
+    background: rgba(0, 245, 196, 0.08) !important;
+    border: 1px solid rgba(0, 245, 196, 0.25) !important;
+}
+
+/* Purchased Model Card */
+.purchasedModelCard {
+    background: rgba(14, 18, 28, 0.75);
+    border: 1px solid rgba(0, 245, 196, 0.15);
+    border-radius: 16px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem;
+    transition: all 0.2s ease;
+}
+
+.purchasedModelCard:hover {
+    border-color: rgba(0, 245, 196, 0.35);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.cardHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.priceTag {
+    text-align: right;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 8px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.cardActionsRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.analyticsRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    font-size: 0.95rem;
+}
+
+.analyticsRow:last-child {
+    border-bottom: none;
+}

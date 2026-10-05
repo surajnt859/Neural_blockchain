@@ -1,0 +1,234 @@
+.header {
+  margin-bottom: 3rem;
+}
+
+.header h1 {
+  margin-bottom: 0.5rem;
+}
+
+/* Model Selector Section */
+.selectorSection {
+  background: rgba(0, 245, 196, 0.02);
+  border: 1px solid rgba(0, 245, 196, 0.1);
+  padding: 2rem;
+  border-radius: 12px;
+  margin-bottom: 3rem;
+}
+
+.modelPills {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: left;
+}
+
+.pill:hover {
+  border-color: var(--cyan);
+  background: rgba(0, 245, 196, 0.05);
+}
+
+.pillActive {
+  background: rgba(0, 245, 196, 0.15);
+  border-color: var(--cyan);
+}
+
+.pillIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  background: var(--gradient);
+  border-radius: 8px;
+  font-weight: 700;
+  color: var(--void);
+  flex-shrink: 0;
+}
+
+.pillContent {
+  min-width: 0;
+}
+
+.pillName {
+  font-weight: 700;
+  color: var(--white);
+  font-size: 0.95rem;
+  margin-bottom: 0.25rem;
+}
+
+.pillCategory {
+  font-size: 0.8rem;
+  color: var(--text2);
+}
+
+/* Comparison Section */
+.comparisonSection {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 2rem;
+}
+
+.comparisonTable {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.comparisonTable thead {
+  background: rgba(0, 245, 196, 0.08);
+}
+
+.comparisonTable th {
+  padding: 1.5rem 1rem;
+  font-weight: 700;
+  border-bottom: 1px solid var(--border);
+}
+
+.metricCol {
+  position: sticky;
+  left: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  min-width: 200px;
+  text-align: left;
+}
+
+.metricLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+  color: var(--text2);
+}
+
+.modelCol {
+  min-width: 200px;
+  text-align: center;
+  color: var(--cyan);
+}
+
+.modelHeader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.modelTitle {
+  font-weight: 700;
+  color: var(--white);
+  font-size: 0.95rem;
+}
+
+.modelSubtitle {
+  font-size: 0.75rem;
+  color: var(--text2);
+  text-transform: uppercase;
+}
+
+.comparisonTable tbody tr {
+  border-bottom: 1px solid rgba(0, 245, 196, 0.05);
+}
+
+.comparisonTable tbody tr:hover {
+  background: rgba(0, 245, 196, 0.03);
+}
+
+.valueCell {
+  padding: 1rem;
+  text-align: center;
+  color: var(--text);
+  position: relative;
+  min-width: 200px;
+  font-weight: 600;
+}
+
+.best {
+  color: var(--cyan);
+  background: rgba(0, 245, 196, 0.05);
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--gradient);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .modelPills {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+
+  .comparisonTable {
+    font-size: 0.9rem;
+  }
+
+  .metricCol {
+    min-width: 160px;
+  }
+
+  .modelCol {
+    min-width: 160px;
+  }
+
+  .valueCell {
+    min-width: 160px;
+    padding: 0.75rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .modelPills {
+    grid-template-columns: 1fr;
+  }
+
+  .selectorSection {
+    padding: 1.5rem;
+  }
+
+  .metricCol {
+    min-width: 140px;
+    font-size: 0.85rem;
+  }
+
+  .modelCol {
+    min-width: 120px;
+  }
+
+  .valueCell {
+    min-width: 120px;
+    padding: 0.5rem 0.25rem;
+    font-size: 0.85rem;
+  }
+
+  .badge {
+    display: none;
+  }
+}

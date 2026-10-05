@@ -1,0 +1,22 @@
+{
+    "name": "neuralchain-ai-marketplace",
+    "private": true,
+    "version": "1.0.0",
+    "scripts": {
+        "build": "npm --prefix frontend install && npm --prefix frontend run build && npm --prefix backend install",
+        "start": "node backend/server.js",
+        "install:all": "npm --prefix backend install && npm --prefix blockchain install && npm --prefix frontend install",
+        "build:contracts": "npm --prefix blockchain run compile",
+        "build:frontend": "npm --prefix frontend run build",
+        "start:backend": "npm --prefix backend start",
+        "dev:frontend": "npm --prefix frontend run dev",
+        "dev:backend": "npm --prefix backend run dev",
+        "dev:blockchain": "npm --prefix blockchain run node",
+        "dev": "concurrently --names blockchain,backend,frontend -c blue,green,yellow \"npm --prefix blockchain run node\" \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+        "deploy:local": "npm --prefix blockchain run deploy:local",
+        "test:contracts": "npm --prefix blockchain run test"
+    },
+    "devDependencies": {
+        "concurrently": "^9.0.1"
+    }
+}
