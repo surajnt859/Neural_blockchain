@@ -7,6 +7,7 @@ require("dotenv").config();
 const { connectDB } = require("./config/db");
 const authRoutes = require("./routes/auth");
 const modelsRoutes = require("./routes/models");
+const reviewsRoutes = require("./routes/reviews");
 const ipfsRoutes = require("./routes/ipfs");
 const governanceRoutes = require("./routes/governance");
 const leaderboardRoutes = require("./routes/leaderboard");
@@ -70,6 +71,7 @@ app.use((req, res, next) => {
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use("/api/auth", authRoutes);
 app.use("/api/models", modelsRoutes);
+app.use("/api/models", reviewsRoutes);
 app.use("/api/ipfs", ipfsRoutes);
 app.use("/api/governance", governanceRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);

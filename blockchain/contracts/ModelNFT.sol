@@ -3,18 +3,15 @@ pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/token/common/ERC2981.sol";
 
-contract ModelNFT is ERC1155, Ownable, ERC2981 {
+contract ModelNFT is ERC1155, Ownable {
     uint256 public constant OWNERSHIP = 1;
     uint256 public constant ACCESS_30_DAY = 2;
     uint256 public constant ACCESS_90_DAY = 3;
 
     mapping(uint256 => string) private _uris;
 
-    constructor() ERC1155("") Ownable(msg.sender) {
-        _setDefaultRoyalty(msg.sender, 9000); // 90% creator royalty
-    }
+    constructor() ERC1155("") Ownable(msg.sender) {}
 
     function mint(address account, uint256 id, uint256 amount, bytes memory data) public onlyOwner {
         _mint(account, id, amount, data);
@@ -28,7 +25,7 @@ contract ModelNFT is ERC1155, Ownable, ERC2981 {
         return _uris[id];
     }
 
-    function supportsInterface(bytes4 interfaceId) public view override(ERC1155, ERC2981) returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view override(ERC1155) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
 

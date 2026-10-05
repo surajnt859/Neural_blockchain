@@ -63,7 +63,6 @@ router.post("/register", async(req, res) => {
         const rawUsername = normalizeUsername(req.body.username);
         const email = normalizeEmail(req.body.email);
         const password = typeof req.body.password === "string" ? req.body.password.trim() : "";
-        const walletAddress = req.body.walletAddress || null;
 
         if (!rawUsername || !email || !password) {
             return res.status(400).json({ error: "Username, email, and password are required." });
@@ -96,7 +95,7 @@ router.post("/register", async(req, res) => {
             username: rawUsername,
             email,
             passwordHash: hashedPassword,
-            walletAddress: walletAddress || null,
+            walletAddress: null,
             role: "buyer",
             isSellerVerified: false,
             createdAt: new Date(),
@@ -107,7 +106,7 @@ router.post("/register", async(req, res) => {
             username: rawUsername,
             email,
             passwordHash: hashedPassword,
-            walletAddress: walletAddress || null,
+            walletAddress: null,
             role: "buyer",
             isSellerVerified: false,
             createdAt: new Date(),
@@ -118,7 +117,7 @@ router.post("/register", async(req, res) => {
         res.status(201).json({
             message: "Registration successful!",
             token,
-            user: { id: savedUser.id, username: rawUsername, email, walletAddress: savedUser.walletAddress, role: savedUser.role },
+            user: { id: savedUser.id, username: rawUsername, email, walletAddress: null, role: savedUser.role },
         });
     } catch (err) {
         console.error("Registration error:", err.message);
@@ -162,40 +161,6 @@ router.post("/login", async(req, res) => {
     } catch (err) {
         console.error("Login error:", err.message);
         return res.status(500).json({ error: "Server error during login." });
-    }
-});
-
-// POST /api/auth/demo-login — 1-click instant developer / demo access
-router.post("/demo-login", async(req, res) => {
-    try {
-        const demoEmail = "developer@gmail.com";
-        let user = await findUserByEmail(demoEmail);
-
-        if (!user) {
-            const hashedPassword = await bcrypt.hash("Password123!", 10);
-            user = {
-                id: `demo-${Date.now()}`,
-                username: "DemoDeveloper",
-                email: demoEmail,
-                passwordHash: hashedPassword,
-                walletAddress: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
-                role: "creator",
-                isSellerVerified: true,
-                createdAt: new Date(),
-            };
-            user = await saveUser(user);
-        }
-
-        const token = signUserToken(user, { expiresIn: "30d" });
-
-        res.json({
-            message: "Instant developer login successful!",
-            token,
-            user: { id: user.id, username: user.username, email: user.email, walletAddress: user.walletAddress, role: user.role },
-        });
-    } catch (err) {
-        console.error("Demo login error:", err.message);
-        res.status(500).json({ error: "Server error during demo login." });
     }
 });
 

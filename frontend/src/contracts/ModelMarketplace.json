@@ -1,5 +1,5 @@
 {
-  "address": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+  "address": "0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6",
   "abi": [
     {
       "inputs": [
@@ -141,12 +141,6 @@
         },
         {
           "indexed": false,
-          "internalType": "string",
-          "name": "name",
-          "type": "string"
-        },
-        {
-          "indexed": false,
           "internalType": "uint256",
           "name": "price",
           "type": "uint256"
@@ -156,6 +150,18 @@
           "internalType": "string",
           "name": "ipfsHash",
           "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "modelHash",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "keyHash",
+          "type": "bytes32"
         },
         {
           "indexed": false,
@@ -535,38 +541,18 @@
         },
         {
           "internalType": "string",
-          "name": "name",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
-          "name": "description",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
-          "name": "category",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
           "name": "ipfsHash",
           "type": "string"
         },
         {
-          "internalType": "string",
+          "internalType": "bytes32",
           "name": "modelHash",
-          "type": "string"
+          "type": "bytes32"
         },
         {
-          "internalType": "string",
-          "name": "verificationStatus",
-          "type": "string"
-        },
-        {
-          "internalType": "uint256",
-          "name": "verificationScore",
-          "type": "uint256"
+          "internalType": "bytes32",
+          "name": "keyHash",
+          "type": "bytes32"
         },
         {
           "internalType": "uint256",
@@ -696,38 +682,18 @@
         },
         {
           "internalType": "string",
-          "name": "name",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
-          "name": "description",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
-          "name": "category",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
           "name": "ipfsHash",
           "type": "string"
         },
         {
-          "internalType": "string",
+          "internalType": "bytes32",
           "name": "modelHash",
-          "type": "string"
+          "type": "bytes32"
         },
         {
-          "internalType": "string",
-          "name": "verificationStatus",
-          "type": "string"
-        },
-        {
-          "internalType": "uint256",
-          "name": "verificationScore",
-          "type": "uint256"
+          "internalType": "bytes32",
+          "name": "keyHash",
+          "type": "bytes32"
         },
         {
           "internalType": "uint256",
@@ -842,38 +808,18 @@
       "inputs": [
         {
           "internalType": "string",
-          "name": "_name",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
-          "name": "_description",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
-          "name": "_category",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
           "name": "_ipfsHash",
           "type": "string"
         },
         {
-          "internalType": "string",
+          "internalType": "bytes32",
           "name": "_modelHash",
-          "type": "string"
+          "type": "bytes32"
         },
         {
-          "internalType": "string",
-          "name": "_verificationStatus",
-          "type": "string"
-        },
-        {
-          "internalType": "uint256",
-          "name": "_verificationScore",
-          "type": "uint256"
+          "internalType": "bytes32",
+          "name": "_keyHash",
+          "type": "bytes32"
         },
         {
           "internalType": "uint256",
@@ -896,38 +842,18 @@
       "inputs": [
         {
           "internalType": "string",
-          "name": "_name",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
-          "name": "_description",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
-          "name": "_category",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
           "name": "_ipfsHash",
           "type": "string"
         },
         {
-          "internalType": "string",
+          "internalType": "bytes32",
           "name": "_modelHash",
-          "type": "string"
+          "type": "bytes32"
         },
         {
-          "internalType": "string",
-          "name": "_verificationStatus",
-          "type": "string"
-        },
-        {
-          "internalType": "uint256",
-          "name": "_verificationScore",
-          "type": "uint256"
+          "internalType": "bytes32",
+          "name": "_keyHash",
+          "type": "bytes32"
         },
         {
           "internalType": "uint256",
@@ -959,6 +885,7 @@
       "type": "function"
     }
   ],
-  "network": "hardhat",
-  "deployedAt": "2026-09-30T15:20:33.731Z"
+  "network": "localhost",
+  "deploymentBlock": 10,
+  "deployedAt": "2026-10-05T18:30:39.704Z"
 }

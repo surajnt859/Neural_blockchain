@@ -36,6 +36,21 @@
   margin-bottom: 8px;
 }
 
+.walletActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.demoBanner {
+  margin: 0 0 1.5rem;
+  padding: 12px 16px;
+  border: 1px solid rgba(245, 158, 11, 0.55);
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #fcd34d;
+}
+
 .mono {
   font-family: var(--font-mono);
 }
@@ -387,6 +402,22 @@
   border-color: rgba(0, 245, 196, 0.2);
 }
 
+.chainTransaction {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.chainTransaction code {
+  overflow-wrap: anywhere;
+  color: var(--cyan);
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -450,5 +481,3 @@
     display: none;
   }
 }
-
-

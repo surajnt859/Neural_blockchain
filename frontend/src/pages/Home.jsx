@@ -7,66 +7,31 @@ import styles from "./Home.module.css";
 const CORE_PILLARS = [
   {
     icon: "💎",
-    title: "90% Creator Royalties",
-    desc: "Smart contracts route 90% of every model sale and downstream fine-tune directly to creator wallets.",
+    title: "On-chain listings and purchases",
+    desc: "Marketplace contracts record compact listing references, creator wallets, primary-sale payments, and license access.",
   },
   {
     icon: "🛡️",
-    title: "Cryptographic Attestation",
-    desc: "Every weight artifact is SHA-256 verified, malware-screened, and pinned to decentralized IPFS storage.",
+    title: "Integrity checks",
+    desc: "Uploads are checked and hashed before storage. Paid model files are encrypted before being sent to IPFS.",
   },
   {
     icon: "⚡",
-    title: "OpenAI-Compatible Gateway",
-    desc: "Query on-chain models via standard OpenAI REST APIs (`nc_live_...`) with instant streaming inference.",
+    title: "Searchable marketplace",
+    desc: "Express and MongoDB manage accounts, searchable metadata, moderation, and the application interface.",
   },
 ];
 
-const TERMINAL_DEMOS = [
-  {
-    id: "whisper",
-    title: "whisper-v3.onnx",
-    prompt: "$ neuralchain run audio/transcribe --model whisper-v3",
-    output: `⚡ Model Loaded: Whisper-Large-v3 (FP16 ONNX)
-⏳ GPU Latency: 42ms (NVIDIA TensorRT)
-📝 Transcription: "Decentralized AI with 90% creator economics."
-✨ Accuracy Score: 99.4% · WER: 0.012`,
-    latency: "42ms",
-    size: "1.42 GB",
-  },
-  {
-    id: "llama",
-    title: "llama-3-8b.gguf",
-    prompt: '$ curl https://api.neuralchain.ai/v1/chat/completions -H "Authorization: Bearer nc_live_..."',
-    output: `HTTP/1.1 200 OK (streaming tokens)
-"On-chain model verification ensures verifiable weight integrity and trustless provenance."
-⚡ Speed: 114.2 t/s · VRAM: 4.8 GB`,
-    latency: "18ms TTFT",
-    size: "4.8 GB",
-  },
-  {
-    id: "resnet",
-    title: "resnet50.pt",
-    prompt: "$ neuralchain verify --cid bafybeic... --hash e3b0c442...",
-    output: `🛡️ SHA-256: MATCH (e3b0c44298fc1c14...)
-🔍 Malicious Opcodes: 0 Detected
-📦 IPFS CID: bafybeicg5q4...
-✅ Status: Verified Commercial Grade`,
-    latency: "12ms",
-    size: "98 MB",
-  },
-];
 
 export default function Home() {
   const navigate = useNavigate();
   const [stats, setStats] = useState([
-    { value: "14", label: "Verified Models" },
-    { value: "1,280+", label: "Verified Sales" },
-    { value: "90%", label: "Creator Royalty" },
-    { value: "48.5 ETH", label: "Total Volume" },
+    { value: "—", label: "Contract-linked listings" },
+    { value: "—", label: "Verified purchases" },
+    { value: "—", label: "ETH volume" },
+    { value: "—", label: "Creator primary-sale share" },
   ]);
   const [trending, setTrending] = useState([]);
-  const [activeTab, setActiveTab] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
@@ -74,15 +39,11 @@ export default function Home() {
       try {
         const statsRes = await getPlatformStats();
         const data = statsRes.data || {};
-        const totalModels = data.totalModels ?? 14;
-        const modelsSold = data.modelsSold ?? 1280;
-        const ethVolume = typeof data.ethRevenue === "number" ? `${data.ethRevenue.toFixed(2)} ETH` : "48.5 ETH";
-
         setStats([
-          { value: totalModels.toString(), label: "Verified Models" },
-          { value: modelsSold.toString(), label: "Verified Sales" },
-          { value: "90%", label: "Creator Royalty" },
-          { value: ethVolume, label: "Total Volume" },
+          { value: Number.isFinite(data.totalModels) ? String(data.totalModels) : "—", label: "Contract-linked listings" },
+          { value: Number.isFinite(data.modelsSold) ? String(data.modelsSold) : "—", label: "Verified purchases" },
+          { value: Number.isFinite(data.ethRevenue) ? `${data.ethRevenue.toFixed(2)} ETH` : "—", label: "ETH volume" },
+          { value: Number.isFinite(data.ethCreatorPrimarySaleShare) ? `${data.ethCreatorPrimarySaleShare.toFixed(2)} ETH` : "—", label: "Creator primary-sale share" },
         ]);
       } catch {}
 
@@ -92,7 +53,7 @@ export default function Home() {
         setTrending(
           modelList.slice(0, 4).map((m) => ({
             ...m,
-            creator: m.owner?.username || "Architect",
+            creator: m.owner?.username || "Unknown creator",
             image: m.category === "Audio" ? "🎙️" : m.category === "Computer Vision" ? "👁️" : m.category === "NLP" ? "🧠" : "🤖",
           }))
         );
@@ -112,7 +73,6 @@ export default function Home() {
     }
   };
 
-  const currentDemo = TERMINAL_DEMOS[activeTab];
 
   return (
     <div>
@@ -122,15 +82,15 @@ export default function Home() {
         <div className={styles.heroContent}>
           <div className={styles.heroBadge}>
             <span>⚡</span>
-            <span>Decentralized AI Marketplace</span>
+            <span>Hybrid AI-model marketplace</span>
           </div>
 
           <h1 className={styles.heroTitle}>
-            Trade and deploy AI models with <span className="gradient-text">90% creator royalties.</span>
+            Discover and license AI models through a <span className="gradient-text">hybrid marketplace.</span>
           </h1>
 
           <p className={styles.heroDesc}>
-            Discover verified open-source weights, query models via OpenAI-compatible endpoints, and earn on-chain royalties for your architectures.
+            Smart contracts record listings, creators, payments, purchase events, and license access. Model files are stored on IPFS, with accounts, metadata, and moderation provided by the backend.
           </p>
 
           {/* Quick Search */}
@@ -167,47 +127,19 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Hero Interactive Terminal Visual */}
+        {/* Current architecture summary */}
         <div className={styles.heroVisual}>
-          <div className={styles.terminalCard}>
-            <div className={styles.terminalHeader}>
-              <div className={styles.terminalDots}>
-                <span className={`${styles.terminalDot} ${styles.dotRed}`} />
-                <span className={`${styles.terminalDot} ${styles.dotYellow}`} />
-                <span className={`${styles.terminalDot} ${styles.dotGreen}`} />
-              </div>
-              <span className={styles.terminalTitle}>neuralchain-runtime</span>
-              <div className={styles.terminalLiveBadge}>
-                <span className={styles.liveDot} />
-                <span>ONLINE</span>
-              </div>
-            </div>
-
-            <div className={styles.terminalTabs}>
-              {TERMINAL_DEMOS.map((demo, idx) => (
-                <button
-                  key={demo.id}
-                  className={`${styles.terminalTab} ${idx === activeTab ? styles.terminalTabActive : ""}`}
-                  onClick={() => {
-                    soundFx.playClick();
-                    setActiveTab(idx);
-                  }}
-                >
-                  {demo.title}
-                </button>
-              ))}
-            </div>
-
-            <div className={styles.terminalBody}>
-              <div className={styles.terminalPrompt}>{currentDemo.prompt}</div>
-              <div className={styles.terminalOutput}>{currentDemo.output}</div>
-            </div>
-
-            <div className={styles.terminalFooter}>
-              <span>⚡ {currentDemo.latency}</span>
-              <span>📦 {currentDemo.size}</span>
-              <span style={{ color: "#34d399", fontWeight: 700 }}>90% Creator Share</span>
-            </div>
+          <div className={styles.terminalCard} style={{ padding: "28px" }}>
+            <h2>How NeuralChain works</h2>
+            <ol style={{ lineHeight: 1.9, color: "var(--text2)", paddingLeft: "22px" }}>
+              <li>Express validates uploads and encrypts paid model files.</li>
+              <li>IPFS stores model files; the contract records compact listing references.</li>
+              <li>MongoDB and Express provide accounts, metadata search, and moderation.</li>
+              <li>On-chain purchases grant wallet-bound, non-transferable license access.</li>
+            </ol>
+            <p style={{ color: "var(--text3)", marginTop: "16px" }}>
+              Local Hardhat and JSON persistence are demo/prototype tools, not production infrastructure.
+            </p>
           </div>
         </div>
       </section>
@@ -217,7 +149,7 @@ export default function Home() {
         <div className={styles.sectionHeader}>
           <div>
             <h2 className={styles.sectionTitle}>🔥 Trending Models</h2>
-            <p className={styles.sectionDesc}>Top-downloaded models with verified SHA-256 provenance</p>
+            <p className={styles.sectionDesc}>Marketplace records and their available metadata</p>
           </div>
           <Link to="/marketplace" className="btn btn-secondary btn-sm" onClick={() => soundFx.playClick()}>
             View All →
@@ -241,11 +173,11 @@ export default function Home() {
               <div className={styles.cardMetrics}>
                 <div>
                   <span className={styles.metricLabel}>Rating</span>
-                  <span className={styles.metricValue}>⭐ {model.rating || 4.9}</span>
+                  <span className={styles.metricValue}>⭐ {model.rating || "Unrated"}</span>
                 </div>
                 <div>
                   <span className={styles.metricLabel}>Downloads</span>
-                  <span className={styles.metricValue}>{model.downloads || 42}</span>
+                  <span className={styles.metricValue}>{Number.isFinite(model.downloads) ? model.downloads : "Not recorded"}</span>
                 </div>
               </div>
               <div className={styles.cardFooter}>
@@ -262,7 +194,7 @@ export default function Home() {
         <div style={{ textAlign: "center", marginBottom: "2.5rem" }}>
           <h2 className={styles.sectionTitle}>Why NeuralChain?</h2>
           <p className={styles.sectionDesc} style={{ maxWidth: 500, margin: "4px auto 0" }}>
-            Decentralized infrastructure built for creators and developers.
+            On-chain transactions and off-chain application services work together.
           </p>
         </div>
 
@@ -284,7 +216,7 @@ export default function Home() {
             Ready to monetize your models?
           </h2>
           <p style={{ color: "#94a3b8", maxWidth: 520, margin: "0 auto", fontSize: "1rem" }}>
-            Upload your weights to IPFS, set your license price, and start earning 90% royalties.
+            Upload model files, publish a listing, and receive the creator share of primary-sale payments.
           </p>
           <div className={styles.ctaButtons}>
             <Link to="/upload" className="btn btn-primary btn-lg" onClick={() => soundFx.playClick()}>

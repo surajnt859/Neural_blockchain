@@ -1,91 +1,84 @@
 const { ethers } = require("ethers");
 const marketplaceArtifact = require("../contracts/ModelMarketplace.json");
-const NEURAL_PER_ETH = 1000;
-const DEMO_WALLET = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+const { getOnChainModel, getMarketplaceContract } = require("./marketplaceReader");
 
-const isDemoMode = (wallet) => process.env.NODE_ENV !== "production" &&
-    process.env.DEMO_MODE !== "false" && wallet.toLowerCase() === DEMO_WALLET.toLowerCase();
+const TIER_MULTIPLIERS = { 1: 1n, 2: 3n, 3: 10n };
+const NEURAL_PER_ETH = 1000n;
 
 async function verifyOnChainPurchase({ txHash, model, buyerWallet, paymentMethod, tier }) {
-    if (!txHash) {
+    if (!/^0x[a-fA-F0-9]{64}$/.test(String(txHash || ""))) {
         throw new Error("A valid blockchain transaction hash is required.");
     }
+    if (!ethers.isAddress(buyerWallet)) {
+        throw new Error("A valid buyer wallet address is required.");
+    }
+    if (!["ETH", "NEURAL"].includes(paymentMethod)) {
+        throw new Error("Only on-chain ETH and NEURAL payments are supported.");
+    }
+    const licenseTier = Number(tier);
+    if (!TIER_MULTIPLIERS[licenseTier]) throw new Error("Invalid license tier.");
 
-    const safeBuyerWallet = (buyerWallet || "0x70997970C51812dc3A010C7d01b50e0d17dc79C8").toLowerCase();
-    const licenseTier = Number(tier) === 3 ? 3 : Number(tier) === 2 ? 2 : 1;
-    const tierMultiplier = licenseTier === 3 ? 10 : licenseTier === 2 ? 3 : 1;
-    const basePrice = Number(model.price) || 0.012;
-    const priceEth = basePrice * tierMultiplier;
-    const priceNeural = Math.round(priceEth * 1000 * 0.85);
-    const expectedAmount = paymentMethod === "NEURAL" ? priceNeural : priceEth;
-
-    const rpcUrl = process.env.RPC_URL || process.env.HARDHAT_RPC_URL || "http://127.0.0.1:8545";
     const marketplaceAddress = process.env.MARKETPLACE_CONTRACT_ADDRESS || marketplaceArtifact.address;
+    if (!ethers.isAddress(marketplaceAddress)) {
+        throw new Error("MARKETPLACE_CONTRACT_ADDRESS must identify the deployed marketplace.");
+    }
+    const contract = getMarketplaceContract();
+    const provider = contract.runner;
+    const [network, transaction, receipt, listing] = await Promise.all([
+        provider.getNetwork(),
+        provider.getTransaction(txHash),
+        provider.getTransactionReceipt(txHash),
+        getOnChainModel(model.contractModelId),
+    ]);
 
-    // 1. Try real on-chain contract verification if RPC and address are available
-    if (rpcUrl && ethers.isAddress(marketplaceAddress) && /^0x[a-fA-F0-9]{64}$/.test(txHash)) {
-        try {
-            const provider = new ethers.JsonRpcProvider(rpcUrl, undefined, { staticNetwork: true });
-            const [network, transaction, receipt] = await Promise.all([
-                provider.getNetwork(),
-                provider.getTransaction(txHash).catch(() => null),
-                provider.getTransactionReceipt(txHash).catch(() => null),
-            ]);
-
-            if (receipt && receipt.status === 1 && transaction &&
-                transaction.to && transaction.to.toLowerCase() === marketplaceAddress.toLowerCase() &&
-                transaction.from && transaction.from.toLowerCase() === safeBuyerWallet) {
-                const iface = new ethers.Interface(marketplaceArtifact.abi);
-                const expectedEvent = paymentMethod === "NEURAL" ? "NeuralPurchase" : "ModelPurchased";
-                const event = receipt.logs.map((log) => {
-                    if (!log.address || log.address.toLowerCase() !== marketplaceAddress.toLowerCase()) return null;
-                    try { return iface.parseLog(log); } catch { return null; }
-                }).find((parsed) => parsed && parsed.name === expectedEvent);
-
-                if (event) {
-                    const eventModelId = event.args[0].toString();
-                    const eventBuyer = event.args[1].toLowerCase();
-                    const eventTier = paymentMethod === "NEURAL" ? event.args[3] : event.args[4];
-                    const rawAmount = paymentMethod === "NEURAL" ? event.args[2] : event.args[3];
-                    const expectedModelId = String(model.contractModelId || model.id);
-                    const expectedRawAmount = paymentMethod === "NEURAL" ?
-                        ethers.parseEther(String(basePrice)) * BigInt(tierMultiplier) * BigInt(NEURAL_PER_ETH) :
-                        ethers.parseEther(String(basePrice)) * BigInt(tierMultiplier);
-
-                    if (eventBuyer !== safeBuyerWallet || eventModelId !== expectedModelId ||
-                        Number(eventTier) !== licenseTier || rawAmount !== expectedRawAmount) {
-                        throw new Error("Blockchain purchase details do not match the requested model, buyer, tier, or price.");
-                    }
-
-                    return {
-                        transactionHash: txHash,
-                        contractModelId: eventModelId,
-                        paymentAmount: Number(ethers.formatEther(rawAmount)),
-                        licenseTier: Number(eventTier),
-                        blockNumber: receipt.blockNumber,
-                        chainId: Number(network.chainId),
-                        isChainVerified: true,
-                    };
-                }
-            }
-        } catch (chainErr) {
-            console.warn("Live RPC verification note:", chainErr.message);
-        }
+    if (!transaction || !receipt || receipt.status !== 1) {
+        throw new Error("The purchase transaction is missing or was not confirmed successfully.");
+    }
+    if (!transaction.to || transaction.to.toLowerCase() !== marketplaceAddress.toLowerCase()) {
+        throw new Error("Transaction was not sent to the configured marketplace contract.");
+    }
+    if (transaction.from.toLowerCase() !== buyerWallet.toLowerCase()) {
+        throw new Error("Transaction sender does not match the buyer wallet.");
+    }
+    if (!listing.isActive) throw new Error("The on-chain model listing is inactive.");
+    if (listing.ipfsHash !== model.ipfsHash ||
+        listing.ownerWallet.toLowerCase() !== String(model.ownerWallet || "").toLowerCase() ||
+        listing.modelHash.toLowerCase() !== `0x${String(model.modelHash || "").replace(/^0x/, "")}`.toLowerCase()) {
+        throw new Error("MongoDB model metadata does not match the authoritative on-chain listing.");
     }
 
-    if (!isDemoMode(safeBuyerWallet)) {
-        throw new Error("Blockchain transaction could not be verified. Access was not granted.");
+    const expectedModelId = String(model.contractModelId);
+    const expectedAmount = BigInt(listing.priceWei) * TIER_MULTIPLIERS[licenseTier] *
+        (paymentMethod === "NEURAL" ? NEURAL_PER_ETH : 1n);
+    const expectedEventName = paymentMethod === "NEURAL" ? "NeuralPurchase" : "ModelPurchased";
+    const iface = new ethers.Interface(marketplaceArtifact.abi);
+    const parsedEvent = receipt.logs
+        .filter((log) => log.address.toLowerCase() === marketplaceAddress.toLowerCase())
+        .map((log) => {
+            try { return iface.parseLog(log); } catch { return null; }
+        })
+        .find((event) => event?.name === expectedEventName);
+
+    if (!parsedEvent) throw new Error(`Transaction did not emit a ${expectedEventName} event.`);
+    const eventModelId = String(paymentMethod === "NEURAL" ? parsedEvent.args.modelId : parsedEvent.args.id);
+    const eventBuyer = parsedEvent.args.buyer.toLowerCase();
+    const amount = paymentMethod === "NEURAL" ? parsedEvent.args.tokenAmount : parsedEvent.args.price;
+    const eventTier = Number(parsedEvent.args.tier);
+    if (eventModelId !== expectedModelId ||
+        eventBuyer !== buyerWallet.toLowerCase() ||
+        eventTier !== licenseTier ||
+        amount !== expectedAmount) {
+        throw new Error("On-chain purchase model, buyer, license tier, or payment amount does not match.");
     }
 
-    // 2. Resilient local development / demo wallet verification fallback
     return {
         transactionHash: txHash,
-        contractModelId: model.contractModelId || "1",
-        paymentAmount: expectedAmount,
+        contractModelId: eventModelId,
+        paymentAmount: Number(ethers.formatEther(amount)),
         licenseTier,
-        blockNumber: 1,
-        isChainVerified: false,
-        verificationMode: "demo",
+        blockNumber: receipt.blockNumber,
+        chainId: Number(network.chainId),
+        isChainVerified: true,
     };
 }
 

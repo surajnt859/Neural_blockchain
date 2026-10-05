@@ -4,9 +4,15 @@ const axios = require("axios");
 const FormData = require("form-data");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
+const mongoose = require("mongoose");
 const authMiddleware = require("../middleware/authMiddleware");
 const { optionalAuth } = authMiddleware;
 const { verifyModelFile } = require("../services/modelVerification");
+const { encryptModelBuffer } = require("../services/encryptionService");
+const { createArchitectureHash, scorePotentialDuplicates } = require("../services/duplicateDetection");
+const Model = require("../models/Model");
+const ModelEncryption = require("../models/ModelEncryption");
 
 const router = express.Router();
 const LOCAL_IPFS_DIR = path.join(__dirname, "../data/ipfs");
@@ -134,23 +140,84 @@ router.post("/upload", authMiddleware, handleUpload, async(req, res) => {
             });
         }
 
+        const price = Number(req.body.price);
+        if (!Number.isFinite(price) || price < 0) {
+            return res.status(400).json({ success: false, error: "A valid non-negative model price is required." });
+        }
+        const tags = typeof req.body.tags === "string" ?
+            req.body.tags.split(",").map((tag) => tag.trim()).filter(Boolean) : [];
+        const architectureHash = createArchitectureHash({
+            architecture: req.body.architecture,
+            framework: verification.framework,
+            modelFormat: verification.modelFormat,
+        });
+        const candidate = {
+            id: null,
+            name: req.body.name,
+            description: req.body.description,
+            category: req.body.category,
+            tags,
+            architectureHash,
+            modelHash: verification.modelHash,
+            parentModelId: req.body.parentModelId || null,
+            version: Number(req.body.version) || 1,
+        };
+        let existingModels;
+        if (mongoose.connection.readyState === 1) {
+            existingModels = await Model.find({
+                archived: { $ne: true },
+                verificationStatus: { $in: ["verified", "legacy", "pending", "needs_review"] },
+            }).select("id name description category tags architectureHash modelHash parentModelId baseModelId").lean();
+        } else {
+            const modelsFile = path.join(__dirname, "../data/models.json");
+            existingModels = fs.existsSync(modelsFile) ? JSON.parse(fs.readFileSync(modelsFile, "utf8")) : [];
+        }
+        const duplicateMatches = scorePotentialDuplicates(candidate, existingModels);
+        if (duplicateMatches.length > 0) {
+            verification.verificationStatus = "needs_review";
+            verification.warnings.push("Potential exact or near-duplicate model detected; moderation review is required.");
+        }
+        verification.duplicateMatches = duplicateMatches;
+        verification.architectureHash = architectureHash;
+
+        const isPaid = price > 0;
+        let encryption = null;
+        let uploadBuffer = req.file.buffer;
+        if (isPaid) {
+            if (mongoose.connection.readyState !== 1) {
+                return res.status(503).json({
+                    success: false,
+                    error: "Paid model uploads require the configured MongoDB key store.",
+                });
+            }
+            try {
+                encryption = encryptModelBuffer(req.file.buffer);
+            } catch (error) {
+                return res.status(503).json({ success: false, error: error.message });
+            }
+            uploadBuffer = encryption.encryptedData;
+        }
+
         const authHeaders = getPinataAuthHeaders();
+        let ipfsHash = null;
+        let provider = "local-deterministic-ipfs";
 
         // If Pinata is configured, upload directly to Pinata Cloud
         if (authHeaders) {
             try {
                 const formData = new FormData();
-                formData.append("file", req.file.buffer, {
-                    filename: req.file.originalname,
+                formData.append("file", uploadBuffer, {
+                    filename: isPaid ? `${crypto.randomUUID()}.enc` : req.file.originalname,
                     contentType: req.file.mimetype || "application/octet-stream",
                 });
                 const authenticatedUser = req.user;
                 formData.append("pinataMetadata", JSON.stringify({
-                    name: req.file.originalname,
+                    name: isPaid ? "encrypted-model" : req.file.originalname,
                     keyvalues: {
                         uploadedBy: authenticatedUser ? authenticatedUser.username : "NeuralChain-User",
                         framework: verification.framework || "Unknown",
                         format: verification.modelFormat || "Unknown",
+                        encrypted: String(isPaid),
                     }
                 }));
                 formData.append("pinataOptions", JSON.stringify({ cidVersion: 0 }));
@@ -165,16 +232,8 @@ router.post("/upload", authMiddleware, handleUpload, async(req, res) => {
                 );
 
                 if (response.data && response.data.IpfsHash) {
-                    const ipfsHash = response.data.IpfsHash;
-                    return res.json({
-                        success: true,
-                        ipfsHash,
-                        ipfsUrl: getPinataGateway(ipfsHash),
-                        fileName: req.file.originalname,
-                        fileSize: req.file.size,
-                        verification,
-                        provider: "pinata-cloud",
-                    });
+                    ipfsHash = response.data.IpfsHash;
+                    provider = "pinata-cloud";
                 }
             } catch (pinataErr) {
                 if (process.env.NODE_ENV === "production") {
@@ -196,24 +255,53 @@ router.post("/upload", authMiddleware, handleUpload, async(req, res) => {
             });
         }
 
-        // Deterministic IPFS v0 Multihash (SHA-256 base58 CID standard Qm...)
-        const { ethers } = require("ethers");
-        const crypto = require("crypto");
-        const sha256Hex = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
-        const multihashBuffer = Buffer.from("1220" + sha256Hex, "hex"); // 0x12 = sha256, 0x20 = 32 bytes length
-        const deterministicCid = ethers.encodeBase58(multihashBuffer);
-        fs.mkdirSync(LOCAL_IPFS_DIR, { recursive: true });
-        fs.writeFileSync(path.join(LOCAL_IPFS_DIR, deterministicCid), req.file.buffer);
+        if (!ipfsHash) {
+            const { ethers } = require("ethers");
+            const sha256Hex = crypto.createHash("sha256").update(uploadBuffer).digest("hex");
+            const multihashBuffer = Buffer.from("1220" + sha256Hex, "hex");
+            ipfsHash = ethers.encodeBase58(multihashBuffer);
+            fs.mkdirSync(LOCAL_IPFS_DIR, { recursive: true });
+            fs.writeFileSync(path.join(LOCAL_IPFS_DIR, ipfsHash), uploadBuffer);
+        }
+
+        let encryptedUploadId = null;
+        if (encryption) {
+            encryptedUploadId = crypto.randomUUID();
+            try {
+                await ModelEncryption.create({
+                    uploadId: encryptedUploadId,
+                    uploaderId: req.user.id,
+                    cid: ipfsHash,
+                    keyHash: encryption.keyHash,
+                    contentIv: encryption.contentIv,
+                    contentAuthTag: encryption.contentAuthTag,
+                    wrappedKey: encryption.wrappedKey,
+                    wrapIv: encryption.wrapIv,
+                    wrapAuthTag: encryption.wrapAuthTag,
+                    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                });
+            } catch (error) {
+                console.error("Failed to persist wrapped model key:", error.message);
+                return res.status(503).json({ success: false, error: "Encrypted model key could not be stored; upload cannot be listed." });
+            }
+        }
 
         res.json({
             success: true,
-            ipfsHash: deterministicCid,
-            ipfsUrl: `${req.protocol}://${req.get("host")}/api/ipfs/local/${deterministicCid}`,
+            ipfsHash,
+            ipfsUrl: provider === "pinata-cloud" ? getPinataGateway(ipfsHash) : `${req.protocol}://${req.get("host")}/api/ipfs/local/${ipfsHash}`,
             fileName: req.file.originalname,
             fileSize: req.file.size,
             verification,
-            provider: "local-deterministic-ipfs",
-            note: "Demo-local content-addressed storage is active. Add a valid PINATA_JWT for durable Pinata/IPFS pinning.",
+            provider,
+            encrypted: Boolean(encryption),
+            keyHash: encryption ? encryption.keyHash : null,
+            encryptedUploadId,
+            encryptionMetadata: encryption ? {
+                contentIv: encryption.contentIv,
+                contentAuthTag: encryption.contentAuthTag,
+                encryptedHash: encryption.encryptedHash,
+            } : null,
         });
     } catch (err) {
         console.error("IPFS Upload Error:", err.message);

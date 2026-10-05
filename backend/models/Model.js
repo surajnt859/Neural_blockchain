@@ -36,7 +36,15 @@ const modelSchema = new mongoose.Schema({
         type: String,
         default: null,
     },
+    fileName: {
+        type: String,
+        default: null,
+    },
     modelHash: {
+        type: String,
+        default: null,
+    },
+    keyHash: {
         type: String,
         default: null,
     },
@@ -102,6 +110,10 @@ const modelSchema = new mongoose.Schema({
     version: {
         type: Number,
         default: 1,
+    },
+    architectureHash: {
+        type: String,
+        default: null,
     },
     parentModelId: {
         type: String,

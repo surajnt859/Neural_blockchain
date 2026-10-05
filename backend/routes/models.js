@@ -4,12 +4,17 @@ const path = require("path");
 const authMiddleware = require("../middleware/authMiddleware");
 const { optionalAuth } = require("../middleware/authMiddleware");
 const Model = require("../models/Model");
+const ModelVersion = require("../models/ModelVersion");
 const Purchase = require("../models/Purchase");
 const User = require("../models/User");
 const { REAL_AI_MODELS, streamModelZip, runModelInference } = require("../services/modelBundles");
 const { verifyOnChainPurchase } = require("../services/transactionVerification");
 const mongoose = require("mongoose");
 const crypto = require("crypto");
+const { ethers } = require("ethers");
+const ModelEncryption = require("../models/ModelEncryption");
+const { unwrapModelKey } = require("../services/encryptionService");
+const { getMarketplaceContract, getOnChainModel } = require("../services/marketplaceReader");
 const router = express.Router();
 const MODELS_FILE = path.join(__dirname, "../data/models.json");
 
@@ -24,6 +29,37 @@ const readModelsFallback = () => {
     }
     return REAL_AI_MODELS;
 };
+
+async function persistVerifiedWallet(userId, walletAddress) {
+    const normalizedWallet = walletAddress.toLowerCase();
+    if (mongoose.connection.readyState === 1) {
+        const existingUser = await User.findOne({
+            id: { $ne: userId },
+            walletVerified: true,
+            walletAddress: new RegExp(`^${normalizedWallet}$`, "i"),
+        }).select("id");
+        if (existingUser) throw new Error("This wallet is already linked to another account.");
+
+        const updatedUser = await User.findOneAndUpdate(
+            { id: userId },
+            { $set: { walletAddress: normalizedWallet, walletVerified: true } },
+            { new: true }
+        );
+        if (!updatedUser) throw new Error("Authenticated user account was not found.");
+        return;
+    }
+
+    const usersFile = path.join(__dirname, "../data/users.json");
+    const users = fs.existsSync(usersFile) ? JSON.parse(fs.readFileSync(usersFile, "utf8")) : [];
+    if (users.some((entry) => entry.id !== userId && entry.walletVerified && entry.walletAddress?.toLowerCase() === normalizedWallet)) {
+        throw new Error("This wallet is already linked to another account.");
+    }
+    const user = users.find((entry) => entry.id === userId);
+    if (!user) throw new Error("Authenticated user account was not found.");
+    user.walletAddress = normalizedWallet;
+    user.walletVerified = true;
+    fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
+}
 
 // Helper to find a model from Mongo or fallback
 async function findModelById(id) {
@@ -56,6 +92,34 @@ async function findModelById(id) {
     ) || null;
 }
 
+async function joinOnChainListing(model) {
+    if (!model || !/^\d+$/.test(String(model.contractModelId || ""))) {
+        throw new Error("Model does not have a resolvable on-chain listing ID.");
+    }
+    const listing = await getOnChainModel(model.contractModelId);
+    if (listing.ownerWallet.toLowerCase() !== String(model.ownerWallet || "").toLowerCase() ||
+        listing.ipfsHash !== model.ipfsHash ||
+        listing.modelHash.toLowerCase() !== `0x${String(model.modelHash || "").replace(/^0x/, "")}`.toLowerCase()) {
+        throw new Error("Stored model metadata does not match the authoritative on-chain listing.");
+    }
+    return {
+        ...model,
+        ownerWallet: listing.ownerWallet.toLowerCase(),
+        ipfsHash: listing.ipfsHash,
+        modelHash: listing.modelHash.replace(/^0x/, ""),
+        keyHash: listing.keyHash.replace(/^0x/, ""),
+        price: Number(ethers.formatEther(listing.priceWei)),
+        onChainActive: listing.isActive,
+        onChainParentModelId: listing.parentModelId,
+    };
+}
+
+function isMissingOnChainListing(error) {
+    return error.code === "CALL_EXCEPTION" &&
+        (error.reason === "Model does not exist" ||
+            error.shortMessage === 'execution reverted: "Model does not exist"');
+}
+
 // GET /api/models — list all models with filters & search
 router.get("/", async(req, res) => {
     try {
@@ -81,8 +145,6 @@ router.get("/", async(req, res) => {
             else if (sort === "price-desc") mongoQuery = mongoQuery.sort({ price: -1 });
             else if (sort === "popular") mongoQuery = mongoQuery.sort({ downloads: -1 });
             else mongoQuery = mongoQuery.sort({ createdAt: -1 });
-
-            if (limit) mongoQuery = mongoQuery.limit(parseInt(limit, 10));
 
             models = await mongoQuery.lean();
         } catch (dbErr) {
@@ -111,7 +173,27 @@ router.get("/", async(req, res) => {
             );
         }
 
-        res.json({ models, total: models.length });
+        const resolvedModels = await Promise.all(models.map(async(model) => {
+            if (!/^\d+$/.test(String(model.contractModelId || ""))) {
+                console.warn(`Skipping model ${model.id}: no resolvable on-chain listing ID.`);
+                return null;
+            }
+            try {
+                return await joinOnChainListing(model);
+            } catch (error) {
+                if (isMissingOnChainListing(error) ||
+                    error.message === "Stored model metadata does not match the authoritative on-chain listing.") {
+                    console.warn(`Skipping model ${model.id}: ${error.message}`);
+                    return null;
+                }
+                throw error;
+            }
+        }));
+        const enrichedModels = resolvedModels.filter(Boolean);
+        const paginatedModels = limit ?
+            enrichedModels.slice(0, parseInt(limit, 10)) :
+            enrichedModels;
+        res.json({ models: paginatedModels, total: paginatedModels.length });
     } catch (err) {
         console.error("Failed to fetch models:", err);
         res.status(500).json({ error: "Failed to fetch models." });
@@ -132,7 +214,18 @@ router.get("/:id", optionalAuth, async(req, res) => {
         if (model.verificationStatus && !["verified", "legacy"].includes(model.verificationStatus) && !isPrivilegedViewer) {
             return res.status(404).json({ error: "Model is not available in the marketplace." });
         }
-        res.json(model);
+        if (!/^\d+$/.test(String(model.contractModelId || ""))) {
+            return res.status(404).json({ error: "Model does not have a resolvable on-chain listing." });
+        }
+        try {
+            return res.json(await joinOnChainListing(model));
+        } catch (error) {
+            if (isMissingOnChainListing(error) ||
+                error.message === "Stored model metadata does not match the authoritative on-chain listing.") {
+                return res.status(404).json({ error: "Model does not have a matching on-chain listing." });
+            }
+            throw error;
+        }
     } catch (err) {
         console.error("Failed to fetch model:", err);
         res.status(500).json({ error: "Failed to fetch model." });
@@ -140,12 +233,13 @@ router.get("/:id", optionalAuth, async(req, res) => {
 });
 
 // POST /api/models — create listing (optional auth for Web3 or registered users)
-router.post("/", optionalAuth, async(req, res) => {
+router.post("/", authMiddleware, async(req, res) => {
     try {
         const {
             name,
             description,
             category,
+            fileName,
             ipfsHash,
             modelHash,
             price,
@@ -158,42 +252,100 @@ router.post("/", optionalAuth, async(req, res) => {
             architecture,
             verificationChecks,
             verificationWarnings,
+            encryptedUploadId,
+            keyHash,
+            architectureHash,
+            version,
+            parentModelId,
         } = req.body;
 
-        if (!name || !ipfsHash) {
-            return res.status(400).json({ error: "Name and IPFS hash are required." });
+        const { walletAddress, walletTimestamp, walletSignature } = req.body;
+        if (!name || !ipfsHash || !txHash || !contractModelId || !walletAddress) {
+            return res.status(400).json({ error: "Name, IPFS CID, listing transaction, contract model ID, and creator wallet are required." });
+        }
+        if (!ethers.isAddress(walletAddress) ||
+            !/^0x[a-fA-F0-9]{64}$/.test(`0x${String(modelHash || "").replace(/^0x/, "")}`) ||
+            !/^0x[a-fA-F0-9]{64}$/.test(`0x${String(keyHash || "").replace(/^0x/, "")}`)) {
+            return res.status(400).json({ error: "Creator wallet and SHA-256/key hashes must be valid." });
         }
 
-        const authenticatedUser = req.user;
-        const authenticatedWallet = authenticatedUser ? authenticatedUser.walletAddress : null;
-        const ownerWallet = req.body.walletAddress || authenticatedWallet || req.body.ownerWallet || null;
-        const verificationStatus = req.body.verificationStatus || "verified";
-        const verificationScore = Number(req.body.verificationScore) || 92;
+        const requestTime = Number(walletTimestamp);
+        if (!walletSignature || !Number.isFinite(requestTime) || Math.abs(Date.now() - requestTime) > 5 * 60 * 1000) {
+            return res.status(401).json({ error: "A current creator-wallet signature is required." });
+        }
+        const walletProofMessage = `NeuralChain creator wallet:${req.user.id}:${walletAddress.toLowerCase()}:${requestTime}`;
+        let recoveredWallet;
+        try {
+            recoveredWallet = ethers.verifyMessage(walletProofMessage, walletSignature);
+        } catch {
+            return res.status(401).json({ error: "Creator-wallet signature is invalid." });
+        }
+        if (recoveredWallet.toLowerCase() !== walletAddress.toLowerCase()) {
+            return res.status(401).json({ error: "Creator-wallet signature does not match the listing wallet." });
+        }
+
+        const ownerWallet = ethers.getAddress(walletAddress);
+        let onChainModel;
+        try {
+            onChainModel = await getOnChainModel(contractModelId);
+        } catch (error) {
+            return res.status(400).json({ error: `On-chain listing could not be verified: ${error.message}` });
+        }
+        if (onChainModel.ownerWallet.toLowerCase() !== ownerWallet.toLowerCase() ||
+            onChainModel.ipfsHash !== ipfsHash ||
+            onChainModel.modelHash.toLowerCase() !== `0x${String(modelHash).replace(/^0x/, "")}`.toLowerCase() ||
+            onChainModel.keyHash.toLowerCase() !== `0x${String(keyHash || "").replace(/^0x/, "")}`.toLowerCase()) {
+            return res.status(400).json({ error: "Submitted listing metadata does not match the authoritative on-chain listing." });
+        }
+
+        try {
+            await persistVerifiedWallet(req.user.id, ownerWallet);
+        } catch (error) {
+            const statusCode = error.message.includes("already linked") ? 409 : 503;
+            return res.status(statusCode).json({ error: error.message });
+        }
+
+        const uploadKeyRecord = encryptedUploadId ?
+            await ModelEncryption.findOne({ uploadId: encryptedUploadId, uploaderId: req.user.id, cid: ipfsHash }) : null;
+        if (encryptedUploadId && (!uploadKeyRecord || uploadKeyRecord.keyHash !== String(keyHash).replace(/^0x/, ""))) {
+            return res.status(400).json({ error: "Encrypted upload session is missing or does not match this listing." });
+        }
+        if (onChainModel.priceWei > 0n && !encryptedUploadId) {
+            return res.status(400).json({ error: "Paid model listings must reference an encrypted upload." });
+        }
+
+        const verificationStatus = "pending";
+        const verificationScore = Number(req.body.verificationScore) || 0;
 
         const newModelData = {
             id: `model-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             name,
+            fileName: typeof fileName === "string" ? path.basename(fileName).slice(0, 255) : null,
             description: description || "",
             category: category || "General AI",
             ipfsHash,
-            modelHash: modelHash || `0x${Date.now().toString(16)}`,
-            price: parseFloat(price) || 0,
+            modelHash: String(modelHash).replace(/^0x/, ""),
+            keyHash: keyHash ? String(keyHash).replace(/^0x/, "") : null,
+            price: Number(ethers.formatEther(onChainModel.priceWei)),
             owner: {
-                id: (req.user && req.user.id) || `wallet-${(ownerWallet || 'creator').slice(0, 12)}`,
-                username: (req.user && req.user.username) || (ownerWallet ? `0x${ownerWallet.slice(2, 6)}...${ownerWallet.slice(-4)}` : "NeuralChain Developer"),
-                email: (req.user && req.user.email) || "developer@neuralchain.ai",
+                id: req.user.id,
+                username: req.user.username,
+                email: req.user.email,
             },
-            ownerWallet: ownerWallet ? ownerWallet.toLowerCase() : null,
-            contractModelId: contractModelId ? String(contractModelId) : String(Date.now()).slice(-4),
-            blockchainTxHash: txHash || `0x${crypto.randomBytes(32).toString("hex")}`,
+            ownerWallet: ownerWallet.toLowerCase(),
+            contractModelId: String(contractModelId),
+            blockchainTxHash: txHash,
             verificationStatus,
             verificationScore,
-            verificationChecks: verificationChecks || { staticIntegrity: "passed", formatSafety: "passed", hashMatch: true },
+            verificationChecks: verificationChecks || null,
             verificationWarnings: Array.isArray(verificationWarnings) ? verificationWarnings : [],
-            framework: framework || "PyTorch",
-            modelFormat: modelFormat || "SafeTensors",
-            benchmarks: benchmarks || { accuracy: "98.4%", latency: "24ms" },
-            architecture: architecture || "Neural Transformer",
+            framework: framework || "Unknown",
+            modelFormat: modelFormat || "Unknown",
+            benchmarks: benchmarks || {},
+            architecture: architecture || "",
+            architectureHash: architectureHash || null,
+            version: Number(version) || 1,
+            parentModelId: parentModelId || null,
             downloads: 0,
             rating: "5.0",
             tags: Array.isArray(tags) ? tags : [],
@@ -201,6 +353,12 @@ router.post("/", optionalAuth, async(req, res) => {
             createdAt: new Date(),
             updatedAt: new Date(),
         };
+
+        if (uploadKeyRecord) {
+            uploadKeyRecord.modelId = newModelData.id;
+            uploadKeyRecord.expiresAt = null;
+            await uploadKeyRecord.save();
+        }
 
         // Always sync to JSON fallback store
         try {
@@ -221,6 +379,62 @@ router.post("/", optionalAuth, async(req, res) => {
     } catch (err) {
         console.error("Failed to create model listing:", err);
         res.status(500).json({ error: "Failed to create model listing." });
+    }
+});
+
+router.post("/:id/key", async(req, res) => {
+    try {
+        const { walletAddress, timestamp, signature } = req.body;
+        if (!ethers.isAddress(walletAddress) || !signature || !Number.isFinite(Number(timestamp))) {
+            return res.status(400).json({ error: "A wallet address, timestamp, and signature are required." });
+        }
+        const requestTime = Number(timestamp);
+        if (Math.abs(Date.now() - requestTime) > 5 * 60 * 1000) {
+            return res.status(401).json({ error: "Wallet access signature has expired." });
+        }
+        const message = `NeuralChain encrypted model key:${req.params.id}:${walletAddress.toLowerCase()}:${requestTime}`;
+        if (ethers.verifyMessage(message, signature).toLowerCase() !== walletAddress.toLowerCase()) {
+            return res.status(401).json({ error: "Wallet access signature is invalid." });
+        }
+
+        const model = await findModelById(req.params.id);
+        if (!model || !model.contractModelId || !model.keyHash) {
+            return res.status(404).json({ error: "Encrypted model listing not found." });
+        }
+        const contract = getMarketplaceContract();
+        const [listing, hasAccess] = await Promise.all([
+            getOnChainModel(model.contractModelId),
+            contract.checkAccess(model.contractModelId, walletAddress),
+        ]);
+        if (!hasAccess) {
+            return res.status(403).json({ error: "On-chain model access is required before releasing the decryption key." });
+        }
+        if (listing.ipfsHash !== model.ipfsHash ||
+            listing.keyHash.toLowerCase() !== `0x${model.keyHash.replace(/^0x/, "")}`.toLowerCase()) {
+            return res.status(409).json({ error: "Stored model metadata does not match the on-chain listing." });
+        }
+
+        const keyRecord = await ModelEncryption.findOne({ modelId: model.id })
+            .select("+contentIv +contentAuthTag +wrappedKey +wrapIv +wrapAuthTag");
+        if (!keyRecord) {
+            return res.status(404).json({ error: "Wrapped model key is unavailable." });
+        }
+        const key = unwrapModelKey(keyRecord);
+        const keyHashOnServer = crypto.createHash("sha256").update(key).digest("hex");
+        if (keyHashOnServer !== keyRecord.keyHash ||
+            `0x${keyHashOnServer}`.toLowerCase() !== listing.keyHash.toLowerCase()) {
+            return res.status(500).json({ error: "Stored model key failed its on-chain integrity check." });
+        }
+        return res.json({
+            cid: model.ipfsHash,
+            key: key.toString("hex"),
+            contentIv: keyRecord.contentIv,
+            contentAuthTag: keyRecord.contentAuthTag,
+            algorithm: "aes-256-gcm",
+        });
+    } catch (error) {
+        console.error("Encrypted model key release failed:", error.message);
+        return res.status(500).json({ error: "Could not verify access or release the model key." });
     }
 });
 
@@ -267,8 +481,6 @@ router.delete("/:id", authMiddleware, async(req, res) => {
 });
 
 const PURCHASES_FILE = path.join(__dirname, "../data/purchases.json");
-const USERS_FILE = path.join(__dirname, "../data/users.json");
-const DEMO_WALLET = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
 
 // Helper to read fallback purchases from JSON
 const readPurchasesFallback = () => {
@@ -308,43 +520,33 @@ router.post("/:id/purchase", optionalAuth, async(req, res) => {
             return res.status(404).json({ error: "Model not found." });
         }
 
-        const licenseTier = Number(tier) === 3 ? 3 : Number(tier) === 2 ? 2 : 1;
-        const buyerWallet = (walletAddress || (req.user && req.user.walletAddress) || "0x70997970C51812dc3A010C7d01b50e0d17dc79C8").toLowerCase();
-        const sellerWallet = (model.ownerWallet || "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266").toLowerCase();
-        const actualPaymentMethod = paymentMethod === "NEURAL" ? "NEURAL" : paymentMethod === "CREDIT_CARD" ? "CREDIT_CARD" : "ETH";
-
-        // Generate synthetic txHash if credit card checkout
-        const effectiveTxHash = txHash || (actualPaymentMethod === "CREDIT_CARD" ? `card_ch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` : `0x${crypto.randomBytes(32).toString("hex")}`);
+        if (!ethers.isAddress(walletAddress) || !txHash) {
+            return res.status(400).json({ error: "A valid buyer wallet and mined transaction hash are required." });
+        }
+        if (!["ETH", "NEURAL"].includes(paymentMethod)) {
+            return res.status(400).json({ error: "Only on-chain ETH and NEURAL purchases are supported." });
+        }
+        if (!model.contractModelId || !/^\d+$/.test(String(model.contractModelId))) {
+            return res.status(409).json({ error: "This model does not have a verified on-chain listing." });
+        }
 
         let chainPurchase;
         try {
             chainPurchase = await verifyOnChainPurchase({
-                txHash: effectiveTxHash,
+                txHash,
                 model,
-                buyerWallet,
-                paymentMethod: actualPaymentMethod,
-                tier: licenseTier,
+                buyerWallet: walletAddress,
+                paymentMethod,
+                tier,
             });
         } catch (verificationError) {
-            console.warn("Verification warning:", verificationError.message);
-            const isDemoPurchase = buyerWallet.toLowerCase() === DEMO_WALLET.toLowerCase() &&
-                process.env.NODE_ENV !== "production" && process.env.DEMO_MODE !== "false";
-            if (!isDemoPurchase) {
-                return res.status(402).json({ error: verificationError.message });
-            }
-            chainPurchase = {
-                transactionHash: effectiveTxHash,
-                contractModelId: model.contractModelId || "1",
-                paymentAmount: Number(model.price) || 0.012,
-                licenseTier,
-                blockNumber: 1,
-                isChainVerified: false,
-            };
+            return res.status(402).json({ error: verificationError.message });
         }
 
-        const actualPaymentAmount = chainPurchase.paymentAmount || Number(model.price) || 0.012;
-        const buyerUserId = (req.user && req.user.id) || `wallet-${buyerWallet}`;
-        const purchaseId = `purch-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const buyerWallet = walletAddress.toLowerCase();
+        const sellerWallet = model.ownerWallet.toLowerCase();
+        const buyerUserId = (req.user && req.user.id) || null;
+        const purchaseId = `purch-${crypto.randomUUID()}`;
         const purchaseDoc = {
             id: purchaseId,
             modelId: model.id,
@@ -352,36 +554,19 @@ router.post("/:id/purchase", optionalAuth, async(req, res) => {
             buyerUserId: buyerUserId,
             buyerWallet: buyerWallet,
             sellerWallet: sellerWallet,
-            paymentMethod: actualPaymentMethod,
-            paymentAmount: actualPaymentAmount,
-            licenseTier: licenseTier,
+            paymentMethod,
+            paymentAmount: chainPurchase.paymentAmount,
+            licenseTier: chainPurchase.licenseTier,
             parentModelId: parentModelId || model.parentModelId || null,
-            transactionHash: chainPurchase.transactionHash || effectiveTxHash,
-            verificationStatus: chainPurchase.isChainVerified === false ? "verified" : "verified",
-            verificationMode: chainPurchase.isChainVerified ? "chain" : "demo",
+            transactionHash: chainPurchase.transactionHash,
+            verificationStatus: "verified",
+            verificationMode: "chain",
             verificationTime: new Date(),
-            nftId: model.contractModelId || `${Math.floor(Math.random() * 8000 + 1000)}`,
+            nftId: model.contractModelId,
             ipfsCID: model.ipfsHash,
             modelHash: model.modelHash,
             createdAt: new Date(),
         };
-
-        // If user logged in didn't have wallet associated, update it now
-        if (req.user && req.user.id) {
-            try {
-                await User.updateOne({ id: req.user.id, walletAddress: null }, { $set: { walletAddress: buyerWallet } });
-            } catch (uErr) {}
-            try {
-                if (fs.existsSync(USERS_FILE)) {
-                    const uList = JSON.parse(fs.readFileSync(USERS_FILE, "utf8"));
-                    const uIdx = uList.findIndex((u) => u.id === req.user.id);
-                    if (uIdx !== -1 && !uList[uIdx].walletAddress) {
-                        uList[uIdx].walletAddress = buyerWallet;
-                        fs.writeFileSync(USERS_FILE, JSON.stringify(uList, null, 2));
-                    }
-                }
-            } catch (fErr) {}
-        }
 
         // 1. Save to MongoDB Purchase collection
         try {
@@ -421,7 +606,7 @@ router.post("/:id/purchase", optionalAuth, async(req, res) => {
 
         return res.json({
             success: true,
-            message: "Purchase verified on-chain and access unlocked!",
+            message: "Purchase verified on-chain. Sign a key-release request to decrypt the model.",
             hasAccess: true,
             hasPurchased: true,
             purchaseId,
@@ -440,70 +625,26 @@ router.get("/:id/access", optionalAuth, async(req, res) => {
     try {
         const model = await findModelById(req.params.id);
         if (!model) return res.status(404).json({ error: "Model not found." });
-
-        const userId = (req.user && req.user.id) || null;
-        const isOwner = userId ? Boolean(model.owner && model.owner.id === userId) : false;
-        const isFree = Number(model.price) === 0;
-
-        // Check if user or user's wallet has a verified purchase
-        let hasPurchased = false;
-        let purchaseRecord = null;
-
-        const rawWallets = [req.query.wallet, req.headers["x-wallet-address"], req.user && req.user.walletAddress].filter(Boolean);
-        const userWallets = rawWallets.map((w) => w.toLowerCase());
-
-        try {
-            if (userId || userWallets.length > 0) {
-                const buyerConditions = [];
-                if (userId) buyerConditions.push({ buyerUserId: userId });
-                userWallets.forEach((w) => {
-                    buyerConditions.push({ buyerWallet: w });
-                    buyerConditions.push({ buyerWallet: { $regex: new RegExp(`^${w}$`, "i") } });
-                });
-
-                const query = {
-                    modelId: model.id,
-                    verificationStatus: "verified",
-                    $or: buyerConditions,
-                };
-                purchaseRecord = await Purchase.findOne(query).lean();
-                if (purchaseRecord) {
-                    hasPurchased = true;
-                }
-            }
-        } catch (dbErr) {
-            console.warn("MongoDB purchase check error:", dbErr.message);
+        const wallet = req.query.wallet;
+        if (!model.contractModelId || !ethers.isAddress(wallet || "")) {
+            return res.json({ hasAccess: false, isOwner: false, hasPurchased: false, isFree: false });
         }
-
-        // Fallback purchase check
-        if (!hasPurchased) {
-            const fallbackPurchases = readPurchasesFallback();
-            purchaseRecord = fallbackPurchases.find((p) =>
-                p.modelId === model.id &&
-                p.verificationStatus === "verified" &&
-                ((userId && p.buyerUserId === userId) || (userWallets.length > 0 && userWallets.includes((p.buyerWallet || "").toLowerCase())))
-            );
-            if (purchaseRecord) {
-                hasPurchased = true;
-            }
-        }
-
-        if (!hasPurchased && userId && Array.isArray(model.purchases) && model.purchases.includes(userId)) {
-            hasPurchased = true;
-        }
-
-        const isPublished = !model.verificationStatus || ["verified", "legacy"].includes(model.verificationStatus);
-        const hasAccess = isPublished && (isOwner || hasPurchased || isFree);
+        const contract = getMarketplaceContract();
+        const [listing, hasAccess] = await Promise.all([
+            getOnChainModel(model.contractModelId),
+            contract.checkAccess(model.contractModelId, wallet),
+        ]);
+        const isOwner = listing.ownerWallet.toLowerCase() === wallet.toLowerCase();
+        const hasPurchased = Boolean(hasAccess && !isOwner);
+        const isFree = BigInt(listing.priceWei) === 0n;
 
         res.json({
             hasAccess,
             isOwner,
             hasPurchased,
             isFree,
-            downloadUrl: hasAccess ? `/api/models/${model.id}/download` : null,
-            ipfsHash: hasAccess ? model.ipfsHash : null,
-            modelHash: hasAccess ? model.modelHash : null,
-            purchaseInfo: purchaseRecord || null,
+            ipfsHash: listing.ipfsHash,
+            modelHash: listing.modelHash,
         });
     } catch (err) {
         console.error("Error checking access:", err);
@@ -511,102 +652,10 @@ router.get("/:id/access", optionalAuth, async(req, res) => {
     }
 });
 
-// GET /api/models/:id/download — download full model bundle ZIP
-router.get("/:id/download", optionalAuth, async(req, res) => {
-    try {
-        const model = await findModelById(req.params.id);
-        if (!model) return res.status(404).json({ error: "Model not found." });
-
-        const userId = req.user ? req.user.id : null;
-        const userWallet = (
-            req.query.wallet ||
-            req.headers["x-wallet-address"] ||
-            (req.user && req.user.walletAddress) ||
-            ""
-        ).toLowerCase();
-
-        const modelIds = [
-            model.id,
-            model._id ? String(model._id) : null,
-            model.contractModelId ? String(model.contractModelId) : null,
-        ].filter(Boolean);
-
-        // Find purchase info for license receipt
-        let purchaseInfo = null;
-        try {
-            const modelConditions = [
-                { modelId: { $in: modelIds } },
-                { contractModelId: { $in: modelIds } },
-            ];
-
-            const buyerConditions = [];
-            if (userId) buyerConditions.push({ buyerUserId: userId });
-            if (userWallet) {
-                buyerConditions.push({ buyerWallet: userWallet });
-                buyerConditions.push({ buyerWallet: { $regex: new RegExp(`^${userWallet}$`, "i") } });
-            }
-
-            if (buyerConditions.length > 0) {
-                const query = {
-                    $and: [
-                        { $or: modelConditions },
-                        { $or: buyerConditions },
-                        { verificationStatus: "verified" }
-                    ]
-                };
-                purchaseInfo = await Purchase.findOne(query).sort({ createdAt: -1 }).lean();
-            }
-        } catch (dbErr) {
-            console.warn("MongoDB download query warning:", dbErr.message);
-        }
-
-        if (!purchaseInfo && (userId || userWallet)) {
-            const fallbackPurchases = readPurchasesFallback();
-            purchaseInfo = fallbackPurchases.find((p) =>
-                (modelIds.includes(p.modelId) || modelIds.includes(p.contractModelId)) &&
-                p.verificationStatus === "verified" &&
-                (
-                    (userId && p.buyerUserId === userId) ||
-                    (userWallet && (p.buyerWallet || "").toLowerCase() === userWallet)
-                )
-            ) || null;
-        }
-
-        const isOwner = Boolean(
-            (userId && model.owner && (userId === model.owner.id || req.user.role === "admin")) ||
-            (userWallet && model.ownerWallet && userWallet === model.ownerWallet.toLowerCase())
-        );
-
-        const hasPurchase = Boolean(purchaseInfo);
-        const isFree = Number(model.price) === 0;
-        const isPublished = !model.verificationStatus || ["verified", "legacy"].includes(model.verificationStatus);
-
-        if (!isPublished || (!isOwner && !hasPurchase && !isFree)) {
-            return res.status(403).json({ error: "A verified purchase or model ownership is required to download this model." });
-        }
-
-        // Generate synthetic receipt for owner or free tier if no purchase row exists
-        if (!purchaseInfo) {
-            purchaseInfo = {
-                id: `receipt-${Date.now()}`,
-                modelId: model.id,
-                buyerWallet: userWallet || (isOwner ? "Model Creator" : "Free Tier User"),
-                paymentMethod: isOwner ? "CREATOR_OWNERSHIP" : "FREE_TIER",
-                paymentAmount: 0,
-                licenseTier: 3,
-                verificationStatus: "verified",
-                createdAt: new Date(),
-                transactionHash: "0x0000000000000000000000000000000000000000000000000000000000000000",
-            };
-        }
-
-        // Stream the generated complete ZIP archive
-        return streamModelZip(model, purchaseInfo, res);
-    } catch (err) {
-        console.error("Download bundle error:", err);
-        res.status(500).json({ error: "Failed to download model bundle: " + err.message });
-    }
-});
+// Paid content is retrieved by CID in the client after the signed key-release check.
+router.get("/:id/download", (req, res) => res.status(410).json({
+    error: "Model downloads use the encrypted IPFS CID and signed key-release endpoint.",
+}));
 
 // POST /api/models/:id/infer — interactive in-browser sandbox runner
 router.post("/:id/infer", optionalAuth, async(req, res) => {
@@ -631,17 +680,90 @@ router.get("/:id/versions", async(req, res) => {
         const model = await findModelById(req.params.id);
         if (!model) return res.status(404).json({ error: "Model not found." });
 
-        const versions = [{
+        const savedVersions = await ModelVersion.find({ modelId: model.id })
+            .sort({ version: 1 })
+            .lean();
+        const currentVersion = {
             version: model.version || 1,
-            versionNotes: model.versionNotes || "Production stable release with verified benchmarks and ONNX/SafeTensors serialization.",
+            versionNotes: model.versionNotes || null,
             createdAt: model.createdAt || new Date(),
             modelHash: model.modelHash,
             ipfsHash: model.ipfsHash,
             downloads: model.downloads || 0,
-        }, ];
+            contractModelId: model.contractModelId || null,
+            verificationStatus: model.verificationStatus || "unverified",
+        };
+        const versions = savedVersions.filter((version) =>
+            Number(version.version) !== Number(currentVersion.version)
+        );
+        versions.push(currentVersion);
+        versions.sort((left, right) => Number(left.version) - Number(right.version));
         res.json({ versions });
     } catch (err) {
+        console.error("Failed to fetch model versions:", err.message);
         res.status(500).json({ error: "Failed to fetch model versions." });
+    }
+});
+
+// POST /api/models/:id/versions — save owner-submitted version metadata for review
+router.post("/:id/versions", authMiddleware, async(req, res) => {
+    try {
+        const model = await findModelById(req.params.id);
+        if (!model) return res.status(404).json({ error: "Model not found." });
+
+        if (req.user.role !== "admin" && model.owner?.id !== req.user.id) {
+            return res.status(403).json({ error: "Only the model owner or an admin can add version metadata." });
+        }
+
+        const versionNumber = Number(req.body.version);
+        if (!Number.isFinite(versionNumber) || versionNumber <= 0) {
+            return res.status(400).json({ error: "Version must be a positive number." });
+        }
+        const versionNotes = typeof req.body.versionNotes === "string" ? req.body.versionNotes.trim() : "";
+        if (versionNotes.length > 1000) {
+            return res.status(400).json({ error: "Version notes must be 1000 characters or fewer." });
+        }
+        const ipfsHash = typeof req.body.ipfsHash === "string" ? req.body.ipfsHash.trim() : null;
+        const sha256Hash = typeof req.body.sha256Hash === "string" ? req.body.sha256Hash.trim() : null;
+        if (sha256Hash && !/^(0x)?[a-fA-F0-9]{64}$/.test(sha256Hash)) {
+            return res.status(400).json({ error: "SHA-256 hash must contain exactly 64 hexadecimal characters." });
+        }
+
+        const latestSavedVersion = await ModelVersion.findOne({ modelId: model.id })
+            .sort({ version: -1 })
+            .select("version")
+            .lean();
+        const latestVersion = Math.max(Number(model.version) || 1, Number(latestSavedVersion?.version) || 0);
+        if (versionNumber <= latestVersion) {
+            return res.status(409).json({ error: "Version must be greater than the latest saved version." });
+        }
+
+        const savedVersion = await ModelVersion.create({
+            id: `${model.id}-v${versionNumber}`,
+            modelId: model.id,
+            version: versionNumber,
+            parentModelId: model.contractModelId || null,
+            baseModelId: model.baseModelId || model.contractModelId || null,
+            versionNotes: versionNotes || null,
+            previousHash: model.modelHash || null,
+            ipfsHash,
+            sha256Hash: sha256Hash ? sha256Hash.replace(/^0x/, "") : null,
+            verificationStatus: "pending",
+            verificationScore: 0,
+            price: model.price,
+            contractModelId: null,
+            blockchainTxHash: null,
+            benchmarks: req.body.benchmarks && typeof req.body.benchmarks === "object" && !Array.isArray(req.body.benchmarks) ?
+                req.body.benchmarks : {},
+            createdAt: new Date(),
+        });
+        return res.status(201).json({
+            message: "Version metadata saved for review.",
+            version: savedVersion,
+        });
+    } catch (err) {
+        console.error("Failed to save model version:", err.message);
+        res.status(500).json({ error: "Failed to save model version." });
     }
 });
 

@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import styles from "./CommandPalette.module.css";
 import { soundFx } from "../services/soundFx";
 import { useToast } from "../context/ToastContext";
-import { useWeb3 } from "../context/Web3Context";
 import { getModels } from "../services/api";
 
 export default function CommandPalette({ isOpen, onClose }) {
@@ -13,7 +12,6 @@ export default function CommandPalette({ isOpen, onClose }) {
   const inputRef = useRef(null);
   const navigate = useNavigate();
   const toast = useToast();
-  const { demoMode, toggleDemoMode } = useWeb3();
 
   // Load models on open for quick instant search
   useEffect(() => {
@@ -54,28 +52,17 @@ export default function CommandPalette({ isOpen, onClose }) {
   // Static Navigation Items
   const navItems = [
     { id: "nav-market", title: "Marketplace", sub: "Explore AI models, weights & benchmarks", icon: "🛒", path: "/marketplace", category: "Navigation" },
-    { id: "nav-bounties", title: "AI Model Bounties (RFM)", sub: "Fund and solve decentralized AI bounties", icon: "🏆", path: "/bounties", category: "Navigation" },
+    { id: "nav-bounties", title: "AI Model Bounties (RFM)", sub: "Off-chain prototype requests for models", icon: "🏆", path: "/bounties", category: "Navigation" },
     { id: "nav-dev", title: "Developer API Gateway", sub: "OpenAI-compatible inference keys & SDKs", icon: "⚡", path: "/developers", category: "Navigation" },
-    { id: "nav-dash", title: "Creator Dashboard", sub: "View 90% royalties, sales and analytics", icon: "📊", path: "/dashboard", category: "Navigation" },
+    { id: "nav-dash", title: "Creator Dashboard", sub: "View model listings and recorded primary sales", icon: "📊", path: "/dashboard", category: "Navigation" },
     { id: "nav-upload", title: "Publish AI Model", sub: "Upload weights, IPFS pin and list on-chain", icon: "🚀", path: "/upload", category: "Navigation" },
-    { id: "nav-gov", title: "DAO Governance", sub: "Vote on model curation with $NEURAL", icon: "🏛️", path: "/governance", category: "Navigation" },
+    { id: "nav-gov", title: "Governance prototype", sub: "Off-chain proposals and wallet-signature voting", icon: "🏛️", path: "/governance", category: "Navigation" },
     { id: "nav-lead", title: "Creator Leaderboard", sub: "Top ranked verified AI model architects", icon: "🎖️", path: "/leaderboard", category: "Navigation" },
     { id: "nav-wallet", title: "Neural Wallet", sub: "Manage ETH, $NEURAL and NFT licenses", icon: "👛", path: "/wallet", category: "Navigation" },
   ];
 
   // Quick Action Items
   const actionItems = [
-    {
-      id: "act-demo",
-      title: demoMode ? "Disable Demo Mode (Switch to Live Web3)" : "Enable Demo Simulation Mode",
-      sub: "Instantly test full flows without gas fees",
-      icon: "🧪",
-      category: "Quick Actions",
-      action: () => {
-        toggleDemoMode?.();
-        toast.info("Demo Mode Toggled", demoMode ? "Switched to Live Web3" : "Demo Wallet active");
-      },
-    },
     {
       id: "act-sound",
       title: "Toggle Interface Sound Effects",
@@ -88,25 +75,14 @@ export default function CommandPalette({ isOpen, onClose }) {
       },
     },
     {
-      id: "act-api",
-      title: "Copy Demo Live API Key",
-      sub: "nc_live_99a8b7c6d5e4f3a2b1...",
-      icon: "🔑",
-      category: "Quick Actions",
-      action: () => {
-        navigator.clipboard.writeText("nc_live_99a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4");
-        toast.success("API Key Copied", "Use Authorization: Bearer nc_live_... in your client");
-      },
-    },
-    {
-      id: "act-royalty",
-      title: "90% Royalty Policy Overview",
-      sub: "90% direct to creator / 10% protocol fee",
+      id: "act-primary-sale",
+      title: "Primary-sale payment split",
+      sub: "Review creator, platform, and lineage payment shares",
       icon: "💎",
       category: "Quick Actions",
       action: () => {
         navigate("/dashboard");
-        toast.info("90% Creator Royalties", "All smart contracts enforce 9000 BPS creator payout.");
+        toast.info("Primary-sale payments", "Secondary resale royalties are not implemented.");
       },
     },
   ];

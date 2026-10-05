@@ -2,10 +2,15 @@ const hre = require("hardhat");
 const fs = require("fs");
 const path = require("path");
 
-const DEMO_BUYER_ADDRESS = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+function setEnvValue(content, key, value) {
+  const linePattern = new RegExp(`^${key}=.*$`, "m");
+  const line = `${key}=${value}`;
+  if (linePattern.test(content)) return content.replace(linePattern, line);
+  return `${content}${content.endsWith("\n") ? "" : "\n"}${line}\n`;
+}
 
 async function main() {
-  const [deployer] = await hre.ethers.getSigners();
+  const [deployer, demoAccount] = await hre.ethers.getSigners();
   console.log("Deploying contracts with account:", deployer.address);
 
   // 1. Deploy ModelNFT (License NFT)
@@ -22,20 +27,18 @@ async function main() {
   const neuralAddress = await neuralToken.getAddress();
   console.log(`✅ NeuralToken deployed to: ${neuralAddress}`);
 
-  // Fund demo buyer wallet with 100,000 NEURAL tokens
-  try {
-    const fundAmount = hre.ethers.parseUnits("100000", 18);
-    const tx = await neuralToken.transfer(DEMO_BUYER_ADDRESS, fundAmount);
-    await tx.wait();
-    console.log(`🪙 Transferred 100,000 NEURAL tokens to demo buyer account (${DEMO_BUYER_ADDRESS})`);
-  } catch (fundErr) {
-    console.warn("Could not pre-fund demo account:", fundErr.message);
+  if (hre.network.name === "localhost" || hre.network.name === "hardhat") {
+    const demoAmount = hre.ethers.parseEther("1000");
+    const fundingTx = await neuralToken.transfer(demoAccount.address, demoAmount);
+    await fundingTx.wait();
+    console.log(`Funded demo account ${demoAccount.address} with 1000 NEURAL`);
   }
 
   // 3. Deploy ModelMarketplace
   const ModelMarketplace = await hre.ethers.getContractFactory("ModelMarketplace");
   const marketplace = await ModelMarketplace.deploy(deployer.address, licenseAddress, neuralAddress);
   await marketplace.waitForDeployment();
+  const marketplaceDeployment = await marketplace.deploymentTransaction().wait();
   const marketplaceAddress = await marketplace.getAddress();
   console.log(`✅ ModelMarketplace deployed to: ${marketplaceAddress}`);
 
@@ -52,6 +55,7 @@ async function main() {
     address: marketplaceAddress,
     abi: artifact.abi,
     network: hre.network.name,
+    deploymentBlock: marketplaceDeployment.blockNumber,
     deployedAt: new Date().toISOString(),
   };
   const nftData = {
@@ -87,9 +91,10 @@ async function main() {
   const frontendEnvPath = path.join(__dirname, "../../frontend/.env");
   if (fs.existsSync(frontendEnvPath)) {
     let envContent = fs.readFileSync(frontendEnvPath, "utf8");
-    envContent = envContent.replace(/VITE_CONTRACT_ADDRESS=.*/, `VITE_CONTRACT_ADDRESS=${marketplaceAddress}`);
-    envContent = envContent.replace(/VITE_NFT_CONTRACT_ADDRESS=.*/, `VITE_NFT_CONTRACT_ADDRESS=${licenseAddress}`);
-    envContent = envContent.replace(/VITE_NEURAL_TOKEN_ADDRESS=.*/, `VITE_NEURAL_TOKEN_ADDRESS=${neuralAddress}`);
+    envContent = setEnvValue(envContent, "VITE_CONTRACT_ADDRESS", marketplaceAddress);
+    envContent = setEnvValue(envContent, "VITE_NFT_CONTRACT_ADDRESS", licenseAddress);
+    envContent = setEnvValue(envContent, "VITE_NEURAL_TOKEN_ADDRESS", neuralAddress);
+    envContent = setEnvValue(envContent, "VITE_DEPLOYMENT_BLOCK", marketplaceDeployment.blockNumber);
     fs.writeFileSync(frontendEnvPath, envContent);
     console.log("🔄 Updated frontend/.env with active contract addresses.");
   }
@@ -97,8 +102,8 @@ async function main() {
   const backendEnvPath = path.join(__dirname, "../../backend/.env");
   if (fs.existsSync(backendEnvPath)) {
     let bEnvContent = fs.readFileSync(backendEnvPath, "utf8");
-    bEnvContent = bEnvContent.replace(/CONTRACT_ADDRESS=.*/, `CONTRACT_ADDRESS=${marketplaceAddress}`);
-    bEnvContent = bEnvContent.replace(/NEURAL_TOKEN_ADDRESS=.*/, `NEURAL_TOKEN_ADDRESS=${neuralAddress}`);
+    bEnvContent = setEnvValue(bEnvContent, "MARKETPLACE_CONTRACT_ADDRESS", marketplaceAddress);
+    bEnvContent = setEnvValue(bEnvContent, "NEURAL_TOKEN_ADDRESS", neuralAddress);
     fs.writeFileSync(backendEnvPath, bEnvContent);
     console.log("🔄 Updated backend/.env with active contract addresses.");
   }

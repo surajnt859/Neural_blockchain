@@ -8,6 +8,7 @@ import styles from "./Governance.module.css";
 export default function Governance() {
   const [proposals, setProposals] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [proposalsError, setProposalsError] = useState(null);
   const [votingId, setVotingId] = useState(null);
   
   // Modal state
@@ -15,28 +16,37 @@ export default function Governance() {
   const [newProposal, setNewProposal] = useState({ title: "", description: "" });
   const [submitting, setSubmitting] = useState(false);
   const { account, provider, signer, connectWallet } = useWeb3();
-  const [neuralBalance, setNeuralBalance] = useState("0");
+  const [neuralBalance, setNeuralBalance] = useState(null);
 
   useEffect(() => {
-    if (!account || !provider || !import.meta.env.VITE_NEURAL_TOKEN_ADDRESS) return;
+    if (!account || !provider || !import.meta.env.VITE_NEURAL_TOKEN_ADDRESS) {
+      setNeuralBalance(null);
+      return;
+    }
     import("../contracts/NeuralToken.json").then(async ({ default: tokenData }) => {
       const token = new ethers.Contract(import.meta.env.VITE_NEURAL_TOKEN_ADDRESS, tokenData.abi, provider);
       setNeuralBalance(ethers.formatUnits(await token.balanceOf(account), 18));
-    }).catch(() => setNeuralBalance("0"));
+    }).catch((error) => {
+      console.error("Could not read NEURAL voting balance:", error);
+      setNeuralBalance(null);
+    });
   }, [account, provider]);
 
   const fetchProposals = async () => {
     try {
       const res = await getProposals();
       setProposals(res.data);
+      setProposalsError(null);
     } catch (err) {
       console.error(err);
+      setProposalsError("Could not load off-chain proposals.");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => { fetchProposals(); }, []);
+  const activeProposals = proposals.filter((proposal) => proposal.status === "Active");
 
   const handleVote = async (id, type) => {
     setVotingId(id);
@@ -79,17 +89,17 @@ export default function Governance() {
     <div className="page-wrapper" style={{ paddingTop: 100, maxWidth: 1000 }}>
       <div className={styles.headerRow}>
         <div>
-          <h1 className="section-title">DAO <span className="gradient-text">Governance</span></h1>
-          <p style={{ color: "var(--text2)" }}>Shape the future of NeuralChain</p>
+          <h1 className="section-title">Off-chain <span className="gradient-text">Governance Prototype</span></h1>
+          <p style={{ color: "var(--text2)" }}>Proposals and votes are stored in MongoDB; this is not on-chain DAO voting.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setIsModalOpen(true)} disabled={!account || Number(neuralBalance) < 100} title={!account ? "Connect a wallet first" : "Requires at least 100 NEURAL"}>➕ New Proposal</button>
+        <button className="btn btn-primary" onClick={() => setIsModalOpen(true)} disabled={!account || neuralBalance === null || Number(neuralBalance) < 100} title={!account ? "Connect a wallet first" : "Requires at least 100 NEURAL"}>➕ New Proposal</button>
       </div>
 
       <div className={`glass-card ${styles.statsCard}`} style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-        <div><strong>NEURAL Voting Power</strong><div className={styles.statVal}>{Number(neuralBalance).toLocaleString()} NEURAL</div></div>
+        <div><strong>NEURAL Voting Power</strong><div className={styles.statVal}>{neuralBalance === null ? "Balance unavailable" : `${Number(neuralBalance).toLocaleString()} NEURAL`}</div></div>
         {!account && <button className="btn btn-outline btn-sm" onClick={connectWallet}>Connect Wallet</button>}
-        {account && Number(neuralBalance) < 1 && <span className="badge badge-amber">Hold NEURAL to vote</span>}
-        {account && Number(neuralBalance) >= 100 && <span className="badge badge-cyan">Proposal threshold met</span>}
+        {account && neuralBalance !== null && Number(neuralBalance) < 1 && <span className="badge badge-amber">Hold NEURAL to vote</span>}
+        {account && neuralBalance !== null && Number(neuralBalance) >= 100 && <span className="badge badge-cyan">Proposal threshold met</span>}
       </div>
 
       <Modal 
@@ -130,9 +140,11 @@ export default function Governance() {
       <div className={styles.grid}>
         <div className={styles.main}>
           <h2 className={styles.sectionHeading}>Active Proposals</h2>
-          {loading ? <div className="spinner" /> : (
+          {loading ? <div className="spinner" /> : proposalsError ? (
+            <p role="alert">{proposalsError}</p>
+          ) : (
             <div className={styles.list}>
-              {proposals.map(p => (
+              {activeProposals.length === 0 ? <p>No active proposals.</p> : activeProposals.map(p => (
                 <div key={p.id} className={`glass-card ${styles.proposalCard}`}>
                   <div className={styles.propHeader}>
                     <span className={`badge ${p.status === 'Active' ? 'badge-cyan' : 'badge-green'}`}>{p.status}</span>
@@ -153,9 +165,9 @@ export default function Governance() {
 
                   {p.status === 'Active' && (
                     <div className={styles.actions}>
-                      <button className="btn btn-outline btn-sm" onClick={() => handleVote(p.id, 'for')} disabled={votingId === p.id || !account || Number(neuralBalance) < 1}>👍 For</button>
-                      <button className="btn btn-outline btn-sm" onClick={() => handleVote(p.id, 'against')} disabled={votingId === p.id || !account || Number(neuralBalance) < 1}>👎 Against</button>
-                      <button className="btn btn-secondary btn-sm" onClick={() => handleVote(p.id, 'abstain')} disabled={votingId === p.id || !account || Number(neuralBalance) < 1}>⚪ Abstain</button>
+                      <button className="btn btn-outline btn-sm" onClick={() => handleVote(p.id, 'for')} disabled={votingId === p.id || !account || neuralBalance === null || Number(neuralBalance) < 1}>👍 For</button>
+                      <button className="btn btn-outline btn-sm" onClick={() => handleVote(p.id, 'against')} disabled={votingId === p.id || !account || neuralBalance === null || Number(neuralBalance) < 1}>👎 Against</button>
+                      <button className="btn btn-secondary btn-sm" onClick={() => handleVote(p.id, 'abstain')} disabled={votingId === p.id || !account || neuralBalance === null || Number(neuralBalance) < 1}>⚪ Abstain</button>
                     </div>
                   )}
                 </div>
@@ -166,17 +178,10 @@ export default function Governance() {
 
         <div className={styles.sidebar}>
           <div className={`glass-card ${styles.statsCard}`}>
-            <h3>Treasury</h3>
-            <div className={styles.statLine}>
-              <span>Balance:</span>
-              <span className={styles.statVal}>Ξ 425.50</span>
-            </div>
-            <div className={styles.statLine}>
-              <span>NEURAL:</span>
-              <span className={styles.statVal}>12,450,000</span>
-            </div>
-            <hr className="divider" />
-            <p style={{ fontSize: "0.8rem", color: "var(--text2)" }}>Treasury funds are used for model grants, infrastructure, and community rewards.</p>
+            <h3>Prototype status</h3>
+            <p style={{ fontSize: "0.8rem", color: "var(--text2)" }}>
+              Proposal and vote records are stored off-chain. No on-chain governance contract or treasury is implemented.
+            </p>
           </div>
         </div>
       </div>

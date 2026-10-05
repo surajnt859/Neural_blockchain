@@ -16,7 +16,7 @@ export default function Footer() {
               ⛓️ AI<span style={{ background: "var(--gradient)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>ModelChain</span>
             </div>
             <p style={{ color: "var(--text2)", fontSize: "0.88rem", lineHeight: 1.6 }}>
-              The decentralized marketplace for AI models. Powered by blockchain & IPFS.
+              A hybrid AI-model marketplace. Smart contracts record listings and payments; model files are stored on IPFS, while Express and MongoDB provide marketplace services.
             </p>
           </div>
 

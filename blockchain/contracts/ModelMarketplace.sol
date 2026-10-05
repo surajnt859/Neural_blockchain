@@ -6,8 +6,8 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./ModelNFT.sol";
 
-/// @title ModelMarketplace - Enterprise Decentralized AI Model & Lineage Marketplace
-/// @notice Enables listing, purchasing, multi-tier licensing, and automated fine-tuning lineage royalties for AI models
+/// @title ModelMarketplace
+/// @notice Records compact model references, primary-sale payments, and non-transferable licenses.
 contract ModelMarketplace is Ownable, ReentrancyGuard {
     // Creator receives 90% of listing revenues, platform takes 10% protocol fee
     uint256 public constant CREATOR_SHARE_BPS = 9000;
@@ -27,15 +27,11 @@ contract ModelMarketplace is Ownable, ReentrancyGuard {
     struct Model {
         uint256 id;
         address payable owner;
-        string name;
-        string description;
-        string category;
         string ipfsHash;
-        string modelHash;
-        string verificationStatus;
-        uint256 verificationScore;
+        bytes32 modelHash;
+        bytes32 keyHash;
         uint256 price;
-        uint256 parentModelId; // 0 if standalone/base model, >0 if fine-tuned derivative
+        uint256 parentModelId;
         bool isActive;
         uint256 createdAt;
     }
@@ -52,9 +48,10 @@ contract ModelMarketplace is Ownable, ReentrancyGuard {
     event ModelListed(
         uint256 indexed id,
         address indexed owner,
-        string name,
         uint256 price,
         string ipfsHash,
+        bytes32 modelHash,
+        bytes32 keyHash,
         uint256 parentModelId
     );
     event ModelPurchased(
@@ -114,19 +111,15 @@ contract ModelMarketplace is Ownable, ReentrancyGuard {
     }
 
     function uploadModelWithLineage(
-        string calldata _name,
-        string calldata _description,
-        string calldata _category,
         string calldata _ipfsHash,
-        string calldata _modelHash,
-        string calldata _verificationStatus,
-        uint256 _verificationScore,
+        bytes32 _modelHash,
+        bytes32 _keyHash,
         uint256 _price,
         uint256 _parentModelId
     ) public whenNotPaused returns (uint256) {
-        require(bytes(_name).length > 0, "Name required");
         require(bytes(_ipfsHash).length > 0, "IPFS hash required");
-        require(keccak256(bytes(_verificationStatus)) == keccak256(bytes("pending")), "Listing must be pending moderation");
+        require(_modelHash != bytes32(0), "SHA-256 hash required");
+        require(_keyHash != bytes32(0), "Encrypted model key hash required");
         require(_price >= MIN_ETH_PRICE, "Price too low");
         if (_parentModelId > 0) {
             require(_parentModelId <= modelCount && models[_parentModelId].isActive, "Invalid parent model");
@@ -136,13 +129,9 @@ contract ModelMarketplace is Ownable, ReentrancyGuard {
         models[modelCount] = Model({
             id: modelCount,
             owner: payable(msg.sender),
-            name: _name,
-            description: _description,
-            category: _category,
             ipfsHash: _ipfsHash,
             modelHash: _modelHash,
-            verificationStatus: _verificationStatus,
-            verificationScore: _verificationScore,
+            keyHash: _keyHash,
             price: _price,
             parentModelId: _parentModelId,
             isActive: true,
@@ -152,28 +141,20 @@ contract ModelMarketplace is Ownable, ReentrancyGuard {
         _access[modelCount][msg.sender] = true;
         _userLicenseTier[modelCount][msg.sender] = TIER_ENTERPRISE;
 
-        emit ModelListed(modelCount, msg.sender, _name, _price, _ipfsHash, _parentModelId);
+        emit ModelListed(modelCount, msg.sender, _price, _ipfsHash, _modelHash, _keyHash, _parentModelId);
         return modelCount;
     }
 
     function uploadModel(
-        string calldata _name,
-        string calldata _description,
-        string calldata _category,
         string calldata _ipfsHash,
-        string calldata _modelHash,
-        string calldata _verificationStatus,
-        uint256 _verificationScore,
+        bytes32 _modelHash,
+        bytes32 _keyHash,
         uint256 _price
     ) external whenNotPaused returns (uint256) {
         return uploadModelWithLineage(
-            _name,
-            _description,
-            _category,
             _ipfsHash,
             _modelHash,
-            _verificationStatus,
-            _verificationScore,
+            _keyHash,
             _price,
             0
         );
@@ -280,13 +261,9 @@ contract ModelMarketplace is Ownable, ReentrancyGuard {
     function getModel(uint256 _modelId) external view returns (
         uint256 id,
         address owner,
-        string memory name,
-        string memory description,
-        string memory category,
         string memory ipfsHash,
-        string memory modelHash,
-        string memory verificationStatus,
-        uint256 verificationScore,
+        bytes32 modelHash,
+        bytes32 keyHash,
         uint256 price,
         uint256 parentModelId,
         bool isActive,
@@ -297,13 +274,9 @@ contract ModelMarketplace is Ownable, ReentrancyGuard {
         return (
             m.id,
             m.owner,
-            m.name,
-            m.description,
-            m.category,
             m.ipfsHash,
             m.modelHash,
-            m.verificationStatus,
-            m.verificationScore,
+            m.keyHash,
             m.price,
             m.parentModelId,
             m.isActive,

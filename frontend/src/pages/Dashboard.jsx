@@ -6,7 +6,7 @@ import Modal from "../components/Modal.jsx";
 import styles from "./Dashboard.module.css";
 
 export default function Dashboard() {
-  const { account, isDemoWallet, ethBalance, neuralBalance } = useWeb3();
+  const { account, signer, chainId, ethBalance, neuralBalance } = useWeb3();
   const [activeTab, setActiveTab] = useState("purchased"); // default to purchased tab so user immediately sees their models!
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -14,7 +14,7 @@ export default function Dashboard() {
   // License NFT Modal
   const [selectedNFTModel, setSelectedNFTModel] = useState(null);
 
-  // Sandbox Modal for Purchased Models
+  // The preview endpoint does not execute uploaded model weights.
   const [sandboxModel, setSandboxModel] = useState(null);
   const [sandboxPrompt, setSandboxPrompt] = useState("");
   const [sandboxRunning, setSandboxRunning] = useState(false);
@@ -26,10 +26,10 @@ export default function Dashboard() {
       verifiedSales: 0,
       ethRevenue: 0,
       neuralRevenue: 0,
-      creatorRoyaltyRevenue: 0,
-      neuralCreatorRoyalty: 0,
+      creatorPrimarySaleShare: 0,
+      neuralCreatorPrimarySaleShare: 0,
       totalDownloads: 0,
-      username: "Developer",
+      username: null,
       walletAddress: null,
     },
     models: [],
@@ -40,7 +40,7 @@ export default function Dashboard() {
     setLoading(true);
     setError(null);
     try {
-      const res = await getDashboardData(account);
+      const res = await getDashboardData();
       if (res.data) {
         const { stats, myModels, purchasedModels } = res.data;
         setDashboardData({
@@ -59,9 +59,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchDashboard();
-  }, [account]);
+  }, []);
 
-  // Handle running inference from dashboard sandbox
+  // The current preview endpoint does not execute uploaded model weights.
   const handleDashboardInference = async () => {
     if (!sandboxModel) return;
     setSandboxRunning(true);
@@ -72,7 +72,7 @@ export default function Dashboard() {
     } catch (err) {
       setSandboxResult({
         success: false,
-        error: err.response?.data?.error || "Sandbox execution failed.",
+        error: err.response?.data?.error || "Prototype preview failed.",
       });
     } finally {
       setSandboxRunning(false);
@@ -146,14 +146,14 @@ export default function Dashboard() {
           </div>
           <div className={styles.walletStatusPill}>
             <span className={styles.greenDot} />
-            <span>{isDemoWallet ? "⚡ Demo Wallet" : account ? "🦊 MetaMask" : "⚡ Instant Demo Wallet"}</span>
+            <span>{account ? `MetaMask · chain ${chainId}` : "Not connected"}</span>
             <code style={{ fontSize: "0.75rem", color: "var(--cyan)" }}>
-              {account ? `${account.slice(0, 6)}...${account.slice(-4)}` : "0x7099...79C8"}
+              {account || "—"}
             </code>
           </div>
           <div style={{ display: "flex", gap: "12px", fontSize: "0.8rem", marginTop: "4px" }}>
-            <span>Ξ {ethBalance || "10.0"} ETH</span>
-            <span style={{ color: "var(--purple-light)" }}>{neuralBalance || "1,000"} NEURAL</span>
+            <span>Ξ {ethBalance ?? "—"} ETH</span>
+            <span style={{ color: "var(--purple-light)" }}>{neuralBalance ?? "—"} NEURAL</span>
           </div>
         </div>
       </div>
@@ -163,7 +163,7 @@ export default function Dashboard() {
         <div className={styles.metricCard}>
           <div className={styles.metricLabel}>🛒 Purchased Models</div>
           <div className={styles.metricValue}>{purchasedModels.length}</div>
-          <div className={styles.metricSub}>Full license & weights access</div>
+          <div className={styles.metricSub}>Non-transferable licenses; paid files encrypted before IPFS storage</div>
         </div>
         <div className={styles.metricCard}>
           <div className={styles.metricLabel}>📤 My Uploaded Models</div>
@@ -171,11 +171,11 @@ export default function Dashboard() {
           <div className={styles.metricSub}>{stats.verifiedSales || 0} total sales</div>
         </div>
         <div className={styles.metricCard}>
-          <div className={styles.metricLabel}>💎 Creator Royalties</div>
+          <div className={styles.metricLabel}>💎 Creator primary-sale share</div>
           <div className={styles.metricValue} style={{ color: "var(--purple-light)" }}>
-            Ξ {Number(stats.creatorRoyaltyRevenue || 0).toFixed(4)}
+            Ξ {Number(stats.creatorPrimarySaleShare || 0).toFixed(4)}
           </div>
-          <div className={styles.metricSub}>90% automatic on-chain split</div>
+          <div className={styles.metricSub}>After platform and applicable lineage shares</div>
         </div>
         <div className={styles.metricCard}>
           <div className={styles.metricLabel}>📥 Model Downloads</div>
@@ -215,7 +215,7 @@ export default function Dashboard() {
                 📦 Your Purchased AI Models & Access Licenses
               </h2>
               <p style={{ color: "var(--text2)", fontSize: "0.9rem", marginTop: "4px" }}>
-                Download production weights, run live sandbox tests, and verify cryptographic license proofs.
+                Download encrypted model files. The prototype preview does not execute uploaded weights.
               </p>
             </div>
             <Link to="/marketplace" className="btn btn-secondary btn-sm">
@@ -228,7 +228,7 @@ export default function Dashboard() {
               <div style={{ fontSize: "3.5rem", marginBottom: "16px" }}>🤖</div>
               <h3 style={{ color: "var(--text)" }}>No purchased models found yet</h3>
               <p style={{ maxWidth: "460px", margin: "10px auto 24px", color: "var(--text2)", fontSize: "0.95rem" }}>
-                You haven't purchased any models with this account. Switch to the instant pre-funded <strong>Demo Wallet</strong> or connect <strong>MetaMask</strong> and pick a model from the marketplace!
+                No on-chain purchases are associated with this authenticated account. Connect the wallet used for an on-chain purchase to check its activity.
               </p>
               <Link to="/marketplace" className="btn btn-primary">
                 🛒 Explore AI Marketplace
@@ -266,11 +266,11 @@ export default function Dashboard() {
                   <div className={styles.cardActionsRow}>
                     <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                       <button
-                        onClick={() => downloadModelBundle(item.id, `${item.name || "model"}-bundle.zip`, account)}
+                        onClick={() => downloadModelBundle(item.id, item.fileName || `${item.name || "model"}.model`, account, signer)}
                         className="btn btn-primary btn-sm"
                         style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
                       >
-                        ⬇️ Download Model Bundle (.zip)
+                        ⬇️ Download and decrypt model
                       </button>
                       <button
                         className="btn btn-secondary btn-sm"
@@ -280,7 +280,7 @@ export default function Dashboard() {
                           setSandboxPrompt("");
                         }}
                       >
-                        ⚡ Run in Sandbox
+                        ⚡ Open prototype preview
                       </button>
                       <button
                         className="btn btn-outline btn-sm"
@@ -316,7 +316,7 @@ export default function Dashboard() {
               <div style={{ fontSize: "3rem", marginBottom: "12px" }}>📤</div>
               <h3>No uploaded models yet</h3>
               <p style={{ marginTop: "6px", marginBottom: "20px" }}>
-                Publish and monetize your trained AI models with automated 90% creator royalties.
+                Publish listings and receive the applicable creator share of verified primary-sale payments.
               </p>
               <Link to="/upload" className="btn btn-primary">
                 Upload First Model
@@ -336,7 +336,7 @@ export default function Dashboard() {
                     <Link to={`/model/${m.id}`} className="btn btn-sm btn-secondary">
                       View
                     </Link>
-                    <button onClick={() => downloadModelBundle(m.id, `${m.name || "model"}-bundle.zip`, account)} className="btn btn-sm btn-outline">
+                    <button onClick={() => downloadModelBundle(m.id, m.fileName || `${m.name || "model"}.model`, account, signer)} className="btn btn-sm btn-outline">
                       Download
                     </button>
                     <button onClick={() => handleRemoveModel(m)} className="btn btn-sm btn-danger" title="Remove model from active listings">
@@ -354,7 +354,7 @@ export default function Dashboard() {
       {activeTab === "earnings" && (
         <div className="grid grid-2" style={{ gap: "24px" }}>
           <div className="glass-card" style={{ padding: "28px" }}>
-            <h3 style={{ color: "var(--cyan)", marginBottom: "16px" }}>💹 Revenue & Royalty Breakdown</h3>
+            <h3 style={{ color: "var(--cyan)", marginBottom: "16px" }}>💹 Recorded primary-sale revenue</h3>
             <div style={{ display: "grid", gap: "12px" }}>
               <div className={styles.analyticsRow}>
                 <span>Gross ETH Volume:</span>
@@ -367,9 +367,9 @@ export default function Dashboard() {
                 </strong>
               </div>
               <div className={styles.analyticsRow}>
-                <span>Creator Royalties (90%):</span>
+                <span>Creator primary-sale share:</span>
                 <strong style={{ color: "var(--cyan)" }}>
-                  Ξ {Number(stats.creatorRoyaltyRevenue || 0).toFixed(4)}
+                  Ξ {Number(stats.creatorPrimarySaleShare || 0).toFixed(4)}
                 </strong>
               </div>
               <div className={styles.analyticsRow}>
@@ -392,7 +392,7 @@ export default function Dashboard() {
               </div>
               <div className={styles.analyticsRow}>
                 <span>Average Review Rating:</span>
-                <strong>⭐ {stats.averageRating || "5.0"}/5</strong>
+                <strong>{stats.averageRating ? `⭐ ${stats.averageRating}/5` : "No verified reviews"}</strong>
               </div>
             </div>
           </div>
@@ -418,7 +418,7 @@ export default function Dashboard() {
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: "var(--text3)" }}>Token ID:</span>
-                <strong style={{ color: "var(--purple-light)" }}>#{selectedNFTModel.nftId || "1"}</strong>
+                <strong style={{ color: "var(--purple-light)" }}>{selectedNFTModel.nftId ? `#${selectedNFTModel.nftId}` : "Not recorded"}</strong>
               </div>
               <div>
                 <span style={{ color: "var(--text3)", display: "block", marginBottom: "2px" }}>Transaction Hash:</span>
@@ -443,12 +443,12 @@ export default function Dashboard() {
         </Modal>
       )}
 
-      {/* ─── In-Dashboard Sandbox Modal ────────────────────────────────────────── */}
+      {/* ─── Prototype preview (uploaded weights are not executed) ─────────────── */}
       {sandboxModel && (
-        <Modal onClose={() => setSandboxModel(null)} title={`⚡ Sandbox: ${sandboxModel.name}`}>
+        <Modal onClose={() => setSandboxModel(null)} title={`Prototype preview: ${sandboxModel.name}`}>
           <div style={{ display: "grid", gap: "16px" }}>
             <p style={{ color: "var(--text2)", fontSize: "0.9rem" }}>
-              Run low-latency live test inference on your purchased model bundle.
+              This endpoint returns a prototype response and does not execute uploaded model files. Isolated Docker inference is future scope.
             </p>
 
             <div>
@@ -470,7 +470,7 @@ export default function Dashboard() {
                   onClick={handleDashboardInference}
                   disabled={sandboxRunning}
                 >
-                  {sandboxRunning ? "Testing..." : "⚡ Execute"}
+                  {sandboxRunning ? "Loading..." : "Show prototype response"}
                 </button>
               </div>
             </div>
@@ -478,8 +478,7 @@ export default function Dashboard() {
             {sandboxResult && (
               <div style={{ background: "rgba(0, 0, 0, 0.5)", padding: "16px", borderRadius: "10px", border: "1px solid rgba(0, 245, 196, 0.2)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px", fontSize: "0.85rem" }}>
-                  <strong style={{ color: "var(--cyan)" }}>Inference Telemetry:</strong>
-                  <span>Latency: <strong style={{ color: "var(--text)" }}>{sandboxResult.telemetry?.latencyMs} ms</strong></span>
+                  <strong style={{ color: "var(--cyan)" }}>Prototype response (not model inference)</strong>
                 </div>
                 <pre style={{ margin: 0, fontSize: "0.8rem", color: "#a7f3d0", maxHeight: "200px", overflowY: "auto" }}>
                   {JSON.stringify(sandboxResult.result || sandboxResult, null, 2)}

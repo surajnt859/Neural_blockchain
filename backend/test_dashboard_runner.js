@@ -36,7 +36,12 @@ function runDashboardTests() {
       }
     });
 
-    const creatorRoyaltyRevenue = Number((ethRevenue * 0.9).toFixed(4));
+    const creatorPrimarySaleShare = Number(
+      myPurchases.reduce(
+        (share, purchase) => share + (Number(purchase.paymentAmount) || 0) * (purchase.parentModelId ? 0.8 : 0.9),
+        0
+      ).toFixed(4)
+    );
     const totalReviews = myReviews.length;
     const averageRating =
       totalReviews > 0
@@ -56,7 +61,7 @@ function runDashboardTests() {
       verifiedSales: myPurchases.length,
       ethRevenue,
       neuralRevenue,
-      creatorRoyaltyRevenue,
+      creatorPrimarySaleShare,
       uniqueBuyers: uniqueBuyers.size,
       reviewsCount: totalReviews,
       averageRating,
@@ -98,7 +103,14 @@ function runDashboardTests() {
   console.log("\n[Test C] Verified Purchase Revenue Check:");
   assert.strictEqual(statsB.verifiedSales, 1);
   assert.strictEqual(statsB.ethRevenue, 0.1);
-  assert.strictEqual(statsB.creatorRoyaltyRevenue, 0.09); // 90% creator royalty
+  assert.strictEqual(statsB.creatorPrimarySaleShare, 0.09); // 90% creator share without parent lineage
+  const lineageStats = computeStats(
+    { id: "user_b" },
+    modelsB,
+    [{ ...purchasesB[0], parentModelId: "base-model" }],
+    reviewsB
+  );
+  assert.strictEqual(lineageStats.creatorPrimarySaleShare, 0.08); // 80% listing-creator share with parent lineage
 
   // Test D — Failed / Unverified Purchase Filtering Check
   console.log("\n[Test D] Failed/Unverified Transaction Exclusions:");

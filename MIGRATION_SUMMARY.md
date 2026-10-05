@@ -1,4 +1,6 @@
-# Blockchain AI Model Marketplace - MongoDB Migration Summary
+# Historical: Blockchain AI Model Marketplace MongoDB Migration Summary
+
+> This is a historical record of a prior migration, not current implementation documentation. Its completion checklists and feature claims may have been superseded. For current architecture and behavior, see [README.md](./README.md) and [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md).
 
 ## Project Overview
 This document summarizes the comprehensive migration of a blockchain-integrated AI model marketplace from JSON file persistence to MongoDB Atlas, completed across 12+ phases.
@@ -126,10 +128,10 @@ This document summarizes the comprehensive migration of a blockchain-integrated 
 ---
 
 ### Phase 11: Dashboard (`backend/routes/dashboard.js`)
-**Critical Fixes:**
+**Historical notes:**
 - ✅ Revenue calculation: Changed from `downloads × price` to verified purchases
 - ✅ Payment method tracking: Separated ETH and NEURAL sales
-- ✅ Creator royalty: Implemented 90% creator / 10% platform split
+- Historical creator-share calculation assumed a 90% / 10% split. Current primary-sale splits are documented in the README; this historical statement is not authoritative.
 - ✅ Real transaction data only: No synthetic earnings
 
 **Metrics Provided:**
@@ -186,7 +188,7 @@ MongoDB Atlas Collections Created:
 **Required Configuration:**
 - Update `backend/.env`:
   - Replace `<db_username>` with actual MongoDB username
-  - Password appears to be pre-filled: `5OEqNoeJWH9OtLSg`
+  - Set MongoDB credentials through a secret manager or local environment configuration. Do not store credentials in this document.
 
 ---
 

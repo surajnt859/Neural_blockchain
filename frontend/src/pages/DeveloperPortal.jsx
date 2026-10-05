@@ -15,12 +15,12 @@ export default function DeveloperPortal() {
 
   // Create Key Modal
   const [createOpen, setCreateOpen] = useState(false);
-  const [keyName, setKeyName] = useState("Production Backend Key");
+  const [keyName, setKeyName] = useState("Prototype backend key");
   const [newKeyResult, setNewKeyResult] = useState(null);
   const [creating, setCreating] = useState(false);
 
   // Playground
-  const [prompt, setPrompt] = useState("Summarize the economic advantage of 90% decentralized creator royalties.");
+  const [prompt, setPrompt] = useState("Describe the NeuralChain hybrid marketplace.");
   const [running, setRunning] = useState(false);
   const [apiOutput, setApiOutput] = useState(null);
 
@@ -77,7 +77,7 @@ export default function DeveloperPortal() {
       const res = await testApiInference("model-whisper-tiny-onnx", prompt);
       setApiOutput(res.data);
       soundFx.playSuccess();
-      toast.success("Inference Complete", `Status: 200 OK · Latency: 38ms`);
+      toast.success("Prototype response received", "Uploaded model files are not executed by this endpoint.");
     } catch (err) {
       setApiOutput({ error: err.response?.data?.error || err.message });
       soundFx.playWarning();
@@ -94,7 +94,7 @@ export default function DeveloperPortal() {
   };
 
   const snippets = {
-    curl: `curl -X POST https://api.neuralchain.ai/api/v1/chat/completions \\
+    curl: `curl -X POST http://localhost:5000/api/v1/chat/completions \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -107,7 +107,7 @@ export default function DeveloperPortal() {
 # NeuralChain OpenAI-compatible gateway client
 client = OpenAI(
     api_key="YOUR_API_KEY",
-    base_url="https://api.neuralchain.ai/api/v1"
+    base_url="http://localhost:5000/api/v1"
 )
 
 response = client.chat.completions.create(
@@ -122,7 +122,7 @@ for chunk in response:
 
 const openai = new OpenAI({
   apiKey: "YOUR_API_KEY",
-  baseURL: "https://api.neuralchain.ai/api/v1"
+  baseURL: "http://localhost:5000/api/v1"
 });
 
 const completion = await openai.chat.completions.create({
@@ -138,13 +138,13 @@ console.log(completion.choices[0].message.content);`,
       {/* Header */}
       <div className={styles.header}>
         <div className="badge badge-cyan" style={{ marginBottom: 8 }}>
-          ⚡ DEVELOPER CLOUD & INFERENCE GATEWAY
+          ⚡ OFF-CHAIN API PROTOTYPE
         </div>
         <h1 className="section-title">
-          OpenAI-Compatible <span className="gradient-text">API Gateway</span>
+          API <span className="gradient-text">Prototype</span>
         </h1>
         <p style={{ color: "var(--text2)", marginTop: 8, maxWidth: 700 }}>
-          Integrate decentralized AI models into your software stack with zero migration friction. Replace OpenAI base URLs with NeuralChain endpoints and query any on-chain model using standard SDKs.
+          The API-key and completion routes are an off-chain prototype. They return generated sample responses and do not execute uploaded model files or provide production model inference.
         </p>
       </div>
 
@@ -169,7 +169,7 @@ console.log(completion.choices[0].message.content);`,
               <div style={{ color: "var(--text3)", fontStyle: "italic" }}>Loading credentials...</div>
             ) : keys.length === 0 ? (
               <div style={{ padding: "20px 0", color: "var(--text2)", fontSize: "0.9rem" }}>
-                No active API keys found. Generate a secret live key to begin querying on-chain models.
+                No active API keys found. Keys can access the prototype API routes; they do not enable uploaded-model inference.
               </div>
             ) : (
               <div className={styles.keyList}>
@@ -181,7 +181,7 @@ console.log(completion.choices[0].message.content);`,
                         {k.keyPrefix}••••••••••••••••••••
                       </div>
                       <div style={{ fontSize: "0.75rem", color: "var(--text3)", marginTop: 4 }}>
-                        Created: {new Date(k.createdAt).toLocaleDateString()} · Requests: {k.requestsCount || 0}
+                        Created: {new Date(k.createdAt).toLocaleDateString()} · Requests: {k.usedThisMonth || 0}
                       </div>
                     </div>
                     <button
@@ -199,7 +199,7 @@ console.log(completion.choices[0].message.content);`,
 
           {/* Quick Integration Guide */}
           <div className="glass-card">
-            <h3 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: 16 }}>Multi-Language SDK Snippets</h3>
+            <h3 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: 16 }}>Prototype API examples</h3>
             <div className={styles.snippetTabs}>
               {["curl", "python", "node"].map((tab) => (
                 <button
@@ -232,8 +232,8 @@ console.log(completion.choices[0].message.content);`,
         <div>
           <div className="glass-card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h3 style={{ fontSize: "1.2rem", fontWeight: 700 }}>Live Gateway Playground</h3>
-              <span className="badge badge-green">● Endpoints Online</span>
+              <h3 style={{ fontSize: "1.2rem", fontWeight: 700 }}>Prototype response playground</h3>
+              <span className="badge badge-purple">Off-chain prototype</span>
             </div>
 
             <form onSubmit={handleRunPlayground}>
@@ -245,7 +245,7 @@ console.log(completion.choices[0].message.content);`,
               </div>
 
               <div className="form-group" style={{ marginBottom: 16 }}>
-                <label className="form-label">Input Prompt / Test Payload</label>
+                <label className="form-label">Sample prompt (does not run a model)</label>
                 <textarea
                   className="form-input"
                   rows={4}
@@ -261,7 +261,7 @@ console.log(completion.choices[0].message.content);`,
                 style={{ width: "100%", justifyContent: "center", marginBottom: 20 }}
                 disabled={running}
               >
-                {running ? "Executing Inference..." : "⚡ Send Inference Request"}
+                {running ? "Requesting sample response..." : "Show prototype response"}
               </button>
             </form>
 
@@ -269,7 +269,7 @@ console.log(completion.choices[0].message.content);`,
             {apiOutput && (
               <div>
                 <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--cyan)", marginBottom: 6 }}>
-                  Gateway Response:
+                  Prototype response (not model inference):
                 </div>
                 <pre className={styles.responseBox}>
                   {JSON.stringify(apiOutput, null, 2)}
@@ -323,7 +323,7 @@ console.log(completion.choices[0].message.content);`,
                   className="form-input"
                   value={keyName}
                   onChange={(e) => setKeyName(e.target.value)}
-                  placeholder="e.g. Next.js Production Cluster"
+                  placeholder="e.g. local development app"
                   required
                 />
               </div>

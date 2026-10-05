@@ -1,103 +1,90 @@
-# NeuralChain Cloud & Production Deployment Guide
+# NeuralChain deployment and local demonstration guide
 
-This guide covers all options for deploying NeuralChain AI Model Marketplace to the cloud or running as a production container.
+NeuralChain is a hybrid AI-model marketplace. Smart contracts record model listings, creator addresses, payments, purchase events, and license access. Model files are stored on IPFS. The MongoDB and Express backend provides user accounts, searchable metadata, moderation, and download authorization.
 
----
+This guide describes the repository's local demonstration and the configuration required to connect its services. It is not a production deployment certification.
 
-## 🌟 Architecture Overview
+## Implemented components
 
-NeuralChain is built as a production-grade full-stack Web3 application:
-* **Frontend**: React + Vite + Ethers.js
-* **Backend**: Node.js / Express + MongoDB Atlas + JWT Auth
-* **Smart Contracts**: Solidity 0.8.24 (Marketplace, License NFT, ERC-20 NEURAL Token)
-* **Unified Production Serving**: In production, the Express backend serves both the `/api/*` REST endpoints and the compiled React SPA static bundle (`frontend/dist`), allowing deployment as a single lightweight cloud web service.
+- `ModelMarketplace` records compact listing references, encrypted-content CIDs, content and key hashes, creator addresses, prices, and parent listing IDs. It settles primary-sale payments and exposes access checks.
+- `ModelNFT` mints non-transferable ERC-1155 access licenses after purchases. Primary-sale payment splits are 10% platform / 90% creator without parent lineage, or 10% platform / 10% parent creator / 80% listing creator with parent lineage. There is no secondary resale market and no ERC-2981 resale royalty implementation.
+- The upload API encrypts paid model files using AES-256-GCM before storing them on IPFS. It stores only a wrapped key server-side; the raw key is not returned to the browser during upload. A key is released only after a time-limited wallet signature and the contract's access check succeed.
+- MongoDB and Express manage accounts, searchable metadata, moderation, purchase verification, and API requests.
+- The wallet page reads MetaMask balances, chain ID, and on-chain marketplace/token events from the configured marketplace deployment block.
 
----
+## Prototype and local-only components
 
-## 🚂 Option 1: Deploy to Railway.app (1-Click Automatic)
+- Hardhat Localhost is for development and demonstrations, not a production chain.
+- When MongoDB or Pinata is not configured, the repository has prototype JSON persistence and local deterministic IPFS storage. These fallbacks are not durable production services.
+- Governance proposals and votes are MongoDB records with token balance checks; no on-chain DAO contract or treasury exists.
+- API-key/completion routes return prototype responses and do not execute uploaded model files.
+- Static upload checks and duplicate-review signals do not certify model quality, provenance, or safety.
 
-Railway automatically detects [railway.json](file:///c:/Users/yuvan/OneDrive/Desktop/2026%20project/forournewproject/forournewproject/railway.json) and [Dockerfile](file:///c:/Users/yuvan/OneDrive/Desktop/2026%20project/forournewproject/forournewproject/Dockerfile):
+NeuralChain currently does not execute uploaded model files inside an isolated Docker sandbox. Isolated Docker inference is future scope.
 
-### Steps to Deploy:
-1. Go to **[Railway.app](https://railway.com)** and sign in with GitHub.
-2. Click **New Project > Deploy from GitHub repo**.
-3. Select your repository: **`Yuva48/NeuralChain`**.
-4. Railway will automatically start building the container image.
-5. In the Railway dashboard for your service, go to the **Variables** tab and add:
-   * `NODE_ENV`: `production`
-   * `JWT_SECRET`: generate a unique random value of at least 32 characters
-   * `MONGODB_URI`: your private MongoDB connection string
-   * `RPC_URL`: the RPC endpoint for the deployed marketplace chain
-   * `MARKETPLACE_CONTRACT_ADDRESS`: the deployed marketplace address
-   * `ADMIN_EMAIL` and `ADMIN_PASSWORD`: deployment-managed admin bootstrap credentials
-   * `CONTRACT_ADDRESS`: `0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9`
-   * `NEURAL_TOKEN_ADDRESS`: `0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512`
-   * `PINATA_JWT`: *(optional for IPFS)*
-6. In the **Settings** tab:
-   * Under **Networking**, click **Generate Domain** (e.g. `neuralchain-production.up.railway.app`).
-7. Your full website (Frontend + Backend + DB) is now live on your custom Railway domain!
+## Local Hardhat demonstration
 
----
+Install dependencies and compile from the repository root:
 
-## 🚀 Option 2: Deploy to Render.com (Free Web Service)
-
-Render natively supports both Web Services and Docker:
-
-### Method A: Connect Git Repo (Single Web Service)
-1. Push your code to GitHub / GitLab.
-2. Go to [Render Dashboard](https://dashboard.render.com) and click **New + > Web Service**.
-3. Select your repository.
-4. Set the following build settings:
-   - **Environment**: `Node`
-   - **Build Command**: `npm run build`
-   - **Start Command**: `npm start`
-5. Under **Environment Variables**, add:
-   - `NODE_ENV`: `production`
-   - `JWT_SECRET`: *(your secret key or generate random)*
-   - `MONGODB_URI`: *(your MongoDB Atlas URI)*
-   - `CONTRACT_ADDRESS`: `0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9` (or your testnet address)
-   - `NEURAL_TOKEN_ADDRESS`: `0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512` (or your testnet address)
-   - `PINATA_JWT`: *(optional for IPFS storage)*
-6. Click **Deploy Web Service**.
-
-### Method B: Blueprint (1-Click Deploy)
-Render will automatically detect [render.yaml](file:///c:/Users/yuvan/OneDrive/Desktop/2026%20project/forournewproject/forournewproject/render.yaml). Simply create a **Blueprint** in Render and link this repository.
-
----
-
-## 🐳 Option 2: Docker / Docker Compose
-
-### Run with Docker Compose:
-```bash
-docker compose up --build -d
-```
-The application will be live at `http://localhost:5000`.
-
-### Build & Run Docker Image Manually:
-```bash
-docker build -t neuralchain-marketplace .
-docker run -p 5000:5000 --env-file backend/.env neuralchain-marketplace
+```powershell
+npm run install:all
+npm run build:contracts
 ```
 
----
+Start a local Hardhat node:
 
-## ☁️ Option 3: Deploy to Railway / Fly.io / GCP Cloud Run
+```powershell
+Push-Location blockchain
+npx hardhat node
+```
 
-Because a multi-stage [Dockerfile](file:///c:/Users/yuvan/OneDrive/Desktop/2026%20project/forournewproject/forournewproject/Dockerfile) is included:
-* **Railway**: Connect your repository and Railway will auto-detect Dockerfile and deploy.
-* **Fly.io**: Run `fly launch` in this directory.
-* **Google Cloud Run**: Run `gcloud run deploy --source .`
+Deploy contracts to the local node in a second terminal:
 
----
+```powershell
+Push-Location blockchain
+npx hardhat run scripts/deploy.js --network localhost
+```
 
-## ▲ Option 4: Split Deployment (Vercel Frontend + Render Backend)
+The deploy script writes synchronized ABI/address files to `frontend/src/contracts` and `backend/contracts`, and records the marketplace deployment block. Configure the frontend's `VITE_API_URL`, `VITE_CONTRACT_ADDRESS`, `VITE_NFT_CONTRACT_ADDRESS`, `VITE_NEURAL_TOKEN_ADDRESS`, and `VITE_DEPLOYMENT_BLOCK` from the local deployment. Configure the backend's `RPC_URL`, `MARKETPLACE_CONTRACT_ADDRESS`, and `NEURAL_TOKEN_ADDRESS`.
 
-If you prefer hosting the React frontend on Vercel:
-1. Import the project into Vercel.
-2. Set **Root Directory** to `frontend`.
-3. Set the environment variable:
-   - `VITE_API_URL`: `https://your-backend-app.onrender.com`
-   - `VITE_CONTRACT_ADDRESS`: `0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9`
-   - `VITE_NFT_CONTRACT_ADDRESS`: `0x5FbDB2315678afecb367f032d93F642f64180aa3`
-   - `VITE_NEURAL_TOKEN_ADDRESS`: `0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512`
-4. Deploy the backend to Render/Railway as described in Option 1.
+The deploy script funds Hardhat account #1 (the demo wallet) with 1,000 NEURAL for local demonstrations. This only runs on the local Hardhat network.
+
+Start the API and web client in separate terminals:
+
+```powershell
+Push-Location backend
+npm start
+```
+
+```powershell
+Push-Location frontend
+npm run dev
+```
+
+For local testing, use a Hardhat development account through MetaMask. Do not copy Hardhat keys into frontend source or `VITE_*` variables.
+
+## Required backend configuration
+
+Use `backend/.env.example` as the variable-name reference. Set secrets and service credentials outside source control:
+
+- `JWT_SECRET`: a randomly generated authentication secret.
+- `MODEL_ENCRYPTION_SECRET`: a base64-encoded 32-byte secret used to wrap per-upload model keys. Paid uploads fail if it is missing or invalid. Do not replace this with a hard-coded fallback.
+- `MONGODB_URI`: MongoDB connection string. MongoDB is required for paid model key-envelope persistence.
+- `RPC_URL` and `MARKETPLACE_CONTRACT_ADDRESS`: the RPC and marketplace deployed to the same network.
+- `NEURAL_TOKEN_ADDRESS`: token contract address for token balances/purchases.
+- `PINATA_JWT` or Pinata API keys: optional credentials for remote IPFS pinning. Without them, local deterministic storage is only suitable for a local demo.
+
+Generate a key value in a trusted local shell or secret manager; do not paste it into the repository:
+
+```powershell
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+`frontend/.env.example` documents the public Vite values. Only public contract addresses, API URLs, and the deployment block belong in `VITE_*`; never put private keys, JWT secrets, Pinata credentials, or model-encryption secrets there.
+
+## Operational boundaries
+
+- The deploy script updates local ABI/address artifacts; it does not configure cloud services or make local Hardhat data persistent.
+- The prototype catalog seeder creates off-chain, unverified metadata only. It does not create blockchain listings, fake transaction hashes, or funded wallets.
+- Historical migration notes describe earlier project states and should not be treated as a description of current behavior.
+- A production deployment requires separately designed operational controls, durable content pinning, monitored infrastructure, backups, and security review; those are not provided by this guide.

@@ -38,7 +38,6 @@ API.interceptors.response.use(
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 export const register = (data) => API.post("/auth/register", data);
 export const login = (data) => API.post("/auth/login", data);
-export const demoLogin = () => API.post("/auth/demo-login");
 
 // ─── Models ───────────────────────────────────────────────────────────────────
 export const getModels = (params) => API.get("/models", { params });
@@ -56,57 +55,55 @@ export const checkAccess = (id, wallet) =>
 export const compareModels = (ids) => API.get("/models/compare", { params: { ids } });
 export const rateModel = (id, rating) => API.post(`/models/${id}/rate`, { rating });
 export const runModelInference = (id, data) => API.post(`/models/${id}/infer`, data);
-export const downloadModelBundleUrl = (id, wallet) => `/api/models/${id}/download${wallet ? `?wallet=${encodeURIComponent(wallet)}` : ""}`;
-export const downloadModelBundle = async(id, filename = "model-bundle.zip", wallet = null) => {
+export const downloadModelBundle = async(id, filename = "model.model", wallet = null, signer = null) => {
     try {
-        let storedWallet = null;
-        try {
-            const storedUser = localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user")) : null;
-            storedWallet = storedUser?.walletAddress || null;
-        } catch {}
-
-        const activeWallet = wallet || localStorage.getItem("neuralchain:wallet") || storedWallet || null;
-        const response = await API.get(`/models/${id}/download`, {
-            params: activeWallet ? { wallet: activeWallet } : {},
-            headers: activeWallet ? { "x-wallet-address": activeWallet } : {},
-            responseType: "blob",
-        });
-
-        // Check if response is actually a JSON error wrapped in a blob
-        if (response.data && (response.data.type === "application/json" || response.headers?.["content-type"]?.includes("application/json"))) {
-            const text = await response.data.text();
-            try {
-                const json = JSON.parse(text);
-                throw new Error(json.error || "Download authorization failed.");
-            } catch (e) {
-                throw new Error(text || "Download failed.");
-            }
+        if (!wallet || !signer) {
+            throw new Error("Connect the wallet that holds model access before downloading.");
         }
+        const timestamp = Date.now();
+        const message = `NeuralChain encrypted model key:${id}:${wallet.toLowerCase()}:${timestamp}`;
+        const signature = await signer.signMessage(message);
+        const { data: release } = await API.post(`/models/${id}/key`, { walletAddress: wallet, timestamp, signature });
 
-        const blob = new Blob([response.data], { type: "application/zip" });
+        const localContentUrl = `${API_BASE_URL}/ipfs/local/${encodeURIComponent(release.cid)}`;
+        let contentResponse = await fetch(localContentUrl);
+        if (!contentResponse.ok) {
+            const gateway = import.meta.env.VITE_IPFS_GATEWAY || "https://gateway.pinata.cloud/ipfs";
+            contentResponse = await fetch(`${gateway.replace(/\/+$/, "")}/${encodeURIComponent(release.cid)}`);
+        }
+        if (!contentResponse.ok) {
+            throw new Error(`Encrypted IPFS content could not be retrieved (HTTP ${contentResponse.status}).`);
+        }
+        const encryptedBytes = new Uint8Array(await contentResponse.arrayBuffer());
+        const key = await crypto.subtle.importKey(
+            "raw",
+            Uint8Array.from(release.key.match(/.{2}/g), (byte) => Number.parseInt(byte, 16)),
+            "AES-GCM",
+            false,
+            ["decrypt"]
+        );
+        const authTag = Uint8Array.from(release.contentAuthTag.match(/.{2}/g), (byte) => Number.parseInt(byte, 16));
+        const authenticatedCiphertext = new Uint8Array(encryptedBytes.length + authTag.length);
+        authenticatedCiphertext.set(encryptedBytes);
+        authenticatedCiphertext.set(authTag, encryptedBytes.length);
+        const plaintext = await crypto.subtle.decrypt({
+            name: "AES-GCM",
+            iv: Uint8Array.from(release.contentIv.match(/.{2}/g), (byte) => Number.parseInt(byte, 16)),
+            tagLength: 128,
+        }, key, authenticatedCiphertext);
+        const blob = new Blob([plaintext], { type: "application/octet-stream" });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        const cleanName = filename.toLowerCase().endsWith(".zip") ? filename : `${filename}.zip`;
-        link.setAttribute("download", cleanName);
+        link.setAttribute("download", filename);
         document.body.appendChild(link);
         link.click();
         link.remove();
         setTimeout(() => URL.revokeObjectURL(url), 15000);
         return true;
     } catch (err) {
-        console.error("Model bundle download failed:", err);
-        if (err.response && err.response.data instanceof Blob) {
-            const errText = await err.response.data.text();
-            try {
-                const errJson = JSON.parse(errText);
-                alert(errJson.error || "Could not download model bundle.");
-            } catch {
-                alert("Could not download model bundle: " + err.message);
-            }
-        } else {
-            alert(err.response?.data?.error || err.message || "Failed to download model bundle.");
-        }
+        console.error("Encrypted model download failed:", err);
+        alert(err.response?.data?.error || err.message || "Failed to download encrypted model.");
         throw err;
     }
 };
@@ -115,14 +112,13 @@ export const downloadModelBundle = async(id, filename = "model-bundle.zip", wall
 export const getProposals = () => API.get("/governance/proposals");
 export const createProposal = (data) => API.post("/governance/proposals", data);
 export const castVote = (id, data) => API.post(`/governance/proposals/${id}/vote`, data);
-export const getTreasury = () => API.get("/governance/treasury");
 
 // ─── Leaderboard ──────────────────────────────────────────────────────────────
 export const getModelLeaderboard = () => API.get("/leaderboard/models");
 export const getCreatorLeaderboard = () => API.get("/leaderboard/creators");
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-export const getDashboardData = (wallet) => API.get("/dashboard", { params: { wallet } });
+export const getDashboardData = () => API.get("/dashboard");
 export const getPlatformStats = () => API.get("/dashboard/platform-stats");
 
 // ─── IPFS ─────────────────────────────────────────────────────────────────────

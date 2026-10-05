@@ -17,10 +17,10 @@ const SORT_OPTIONS = [
 ];
 
 const MARKETPLACE_HIGHLIGHTS = [
-  { label: "Verified Models", value: "14 Assets" },
-  { label: "Creator Royalty", value: "90% Payout" },
-  { label: "Payment Rails", value: "ETH + NEURAL" },
-  { label: "Attestation", value: "SHA-256 IPFS" },
+  { label: "Listing record", value: "On-chain reference" },
+  { label: "License", value: "Non-transferable ERC-1155" },
+  { label: "Payment rails", value: "ETH + NEURAL" },
+  { label: "Paid model files", value: "Encrypted before IPFS" },
 ];
 
 export default function Marketplace() {
@@ -158,15 +158,15 @@ export default function Marketplace() {
       <div className={styles.header}>
         <div className={styles.eyebrow}>
           <span>⚡</span>
-          <span>Decentralized AI Hub · 90% Creator Revenue</span>
+          <span>Hybrid AI-model marketplace</span>
         </div>
         <h1 className="section-title">
           Explore AI <span className="gradient-text">Weights & Models</span>
         </h1>
         <p style={{ color: "var(--text2)", marginTop: 8 }}>
           {loading
-            ? "Loading decentralized models..."
-            : `${filteredModels.length} model${filteredModels.length !== 1 ? "s" : ""} available on-chain with verified provenance`}
+            ? "Loading marketplace records..."
+            : `${filteredModels.length} marketplace record${filteredModels.length !== 1 ? "s" : ""} found`}
         </p>
       </div>
 

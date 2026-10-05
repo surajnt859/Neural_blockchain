@@ -6,16 +6,15 @@ import CheckoutModal from "../components/CheckoutModal.jsx";
 import {
   checkAccess,
   getModel,
-  runModelInference,
   downloadModelBundle,
 } from "../services/api";
 import styles from "./ModelDetail.module.css";
 
 const DETAIL_HIGHLIGHTS = [
-  { label: "Verified Status", value: "On-Chain SHA-256" },
-  { label: "License Access", value: "Multi-Tier NFT" },
-  { label: "Storage Layer", value: "Decentralized IPFS (AES-256)" },
-  { label: "Creator Royalty", value: "90% On-Chain Share" },
+  { label: "Integrity", value: "SHA-256 file hash" },
+  { label: "License Access", value: "Non-transferable ERC-1155" },
+  { label: "Storage Layer", value: "Paid model files encrypted before IPFS storage" },
+  { label: "Primary sale", value: "Creator/platform payment split" },
 ];
 
 export default function ModelDetail() {
@@ -23,6 +22,7 @@ export default function ModelDetail() {
   const { user } = useAuth();
   const {
     account,
+    signer,
     connectMetaMask,
   } = useWeb3();
   const navigate = useNavigate();
@@ -34,18 +34,8 @@ export default function ModelDetail() {
   const [hasAccess, setHasAccess] = useState(false);
   const [hasPurchased, setHasPurchased] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
-  const [downloadUrl, setDownloadUrl] = useState(null);
-
   // Purchase Modal State
   const [purchaseOpen, setPurchaseOpen] = useState(false);
-
-  // Live Playground State
-  const [sandboxPrompt, setSandboxPrompt] = useState("");
-  const [sandboxRunning, setSandboxRunning] = useState(false);
-  const [sandboxResult, setSandboxResult] = useState(null);
-  const [activeAudioSample, setActiveAudioSample] = useState("clinic_record_01.wav");
-  const [selectedVisionImage, setSelectedVisionImage] = useState("medical_scan_fp16.jpg");
-  const [sdkTab, setSdkTab] = useState("python");
 
   // Fetch Model Data
   useEffect(() => {
@@ -60,25 +50,18 @@ export default function ModelDetail() {
 
         const normalized = {
           ...serverModel,
-          creator: serverModel?.owner?.username || "Verified Neural Creator",
+          creator: serverModel?.owner?.username || "Unknown creator",
           isVerified: serverModel?.verificationStatus === "verified",
           image: getCategoryIcon(serverModel?.category),
           reviewCount: serverModel?.reviewCount || 0,
-          rating: serverModel?.rating || "4.9",
-          downloads: serverModel?.downloads || 1420,
-          verificationStatus: serverModel?.verificationStatus || "verified",
-          verificationScore: serverModel?.verificationScore || 96,
-          tags: serverModel?.tags || ["AI", "Neural", "ONNX"],
+          rating: serverModel?.rating || "Unrated",
+          downloads: serverModel?.downloads || 0,
+          verificationStatus: serverModel?.verificationStatus || "unverified",
+          verificationScore: serverModel?.verificationScore ?? null,
+          tags: serverModel?.tags || [],
         };
 
         setModel(normalized);
-        if (normalized.category === "Audio") {
-          setSandboxPrompt("Transcribe audio with timestamp alignment.");
-        } else if (normalized.category === "Computer Vision") {
-          setSandboxPrompt("Classify primary object and detect anomalies.");
-        } else {
-          setSandboxPrompt("Explain quantum computing advantages in simple terms.");
-        }
       } catch (err) {
         if (!cancelled) setError("Model not found or server error.");
       } finally {
@@ -92,6 +75,12 @@ export default function ModelDetail() {
 
   // Check Access Status
   useEffect(() => {
+    if (!model?.contractModelId) {
+      setHasAccess(false);
+      setHasPurchased(false);
+      setIsOwner(false);
+      return undefined;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -100,45 +89,21 @@ export default function ModelDetail() {
         setHasAccess(res.data.hasAccess);
         setHasPurchased(res.data.hasPurchased);
         setIsOwner(res.data.isOwner);
-        if (res.data.hasAccess) {
-          setDownloadUrl(res.data.downloadUrl || `/api/models/${id}/download`);
-        }
       } catch (err) {}
     })();
     return () => {
       cancelled = true;
     };
-  }, [id, account]);
+  }, [id, account, model?.contractModelId]);
 
   const basePriceEth = useMemo(() => {
     const n = Number(model?.price);
-    return Number.isFinite(n) ? n : 0.012;
+    return Number.isFinite(n) ? n : 0;
   }, [model?.price]);
 
   // Handle open purchase dialog
   const handleOpenPurchase = () => {
     setPurchaseOpen(true);
-  };
-
-  // Run Sandbox Inference
-  const handleRunInference = async () => {
-    setSandboxRunning(true);
-    setSandboxResult(null);
-    try {
-      const res = await runModelInference(id, {
-        prompt: sandboxPrompt,
-        audioSample: activeAudioSample,
-        imageSample: selectedVisionImage,
-      });
-      setSandboxResult(res.data);
-    } catch (err) {
-      setSandboxResult({
-        success: false,
-        error: err.response?.data?.error || "Inference execution failed.",
-      });
-    } finally {
-      setSandboxRunning(false);
-    }
   };
 
   function getCategoryIcon(cat) {
@@ -149,48 +114,6 @@ export default function ModelDetail() {
     return "⚡";
   }
 
-  const codeSnippets = {
-    python: `import onnxruntime as ort
-import numpy as np
-
-# Load verified encrypted model bundle
-session = ort.InferenceSession("${model?.name?.toLowerCase().replace(/\s+/g, "_") || "model"}.onnx")
-print("Model initialized on GPU execution provider (CUDA/TensorRT)")
-
-# Run sample batch inference
-input_name = session.get_inputs()[0].name
-output = session.run(None, {input_name: np.random.randn(1, 3, 224, 224).astype(np.float32)})
-print("Inference executed successfully!")`,
-    curl: `curl -X POST https://api.neuralchain.ai/api/v1/chat/completions \\
-  -H "Authorization: Bearer nc_live_YOUR_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "model": "${model?.id || "model"}",
-    "messages": [{"role": "user", "content": "Run verified inference task"}]
-  }'`,
-    nodejs: `import { NeuralChainClient } from "@neuralchain/sdk";
-
-const client = new NeuralChainClient({
-  apiKey: process.env.NEURALCHAIN_API_KEY,
-});
-
-const result = await client.models.infer("${model?.id}", {
-  prompt: "Analyze and execute task",
-});
-console.log(result.output);`,
-    openai: `from openai import OpenAI
-
-client = OpenAI(
-    api_key="nc_live_YOUR_API_KEY",
-    base_url="https://api.neuralchain.ai/api/v1"
-)
-
-response = client.chat.completions.create(
-    model="${model?.id || "model"}",
-    messages=[{"role": "user", "content": "Explain quantum advantage"}]
-)
-print(response.choices[0].message.content)`,
-  };
 
   if (loading) {
     return (
@@ -228,48 +151,56 @@ print(response.choices[0].message.content)`,
           <div className={styles.headerInfo}>
             <div className={styles.badges}>
               <span className="badge badge-purple">{model.category}</span>
-              <span className="badge badge-green">✓ {model.verificationScore}% Verified Security</span>
+              <span className="badge badge-green">{model.verificationStatus === "verified" ? `Static checks ${model.verificationScore ?? ""}` : model.verificationStatus}</span>
               <span className="badge badge-blue">{model.framework}</span>
             </div>
             <h1 className={styles.title}>{model.name}</h1>
             <div className={styles.creator}>
-              Authored by <strong style={{ color: "#fff" }}>{model.creator}</strong> • SHA-256 Verified
+              Authored by <strong style={{ color: "#fff" }}>{model.creator}</strong> • SHA-256 integrity hash
             </div>
             <div className={styles.rating}>
-              <span>⭐ {model.rating} (Verified Buyers)</span>
-              <span>📥 {model.downloads} downloads</span>
-              <span>⚡ 90% Creator Royalties</span>
+              <span>⭐ {model.reviewCount ? `${model.rating} (${model.reviewCount} reviews)` : "Unrated"}</span>
+              <span>📥 {model.downloads} recorded downloads</span>
+              <span>Primary-sale payment split</span>
             </div>
           </div>
 
           {/* Pricing & License Purchase Card */}
           <div className={styles.priceActionBox}>
-            <div className={styles.priceDisplay}>
-              <div style={{ fontSize: "0.75rem", textTransform: "uppercase", color: "var(--text3)", fontWeight: 600 }}>
-                License Price
-              </div>
-              <div className={styles.ethPrice}>Ξ {basePriceEth} ETH</div>
-              <div className={styles.neuralPrice}>or {Math.round(basePriceEth * 1000 * 0.85)} NEURAL (15% DAO Discount)</div>
-            </div>
-
-            {hasAccess ? (
-              <div style={{ display: "grid", gap: "8px", width: "100%" }}>
-                <button onClick={() => downloadModelBundle(model.id, `${model.name || "model"}-bundle.zip`, account)} className={`btn btn-primary ${styles.buyButton}`}>
-                  📥 Download Weights (.zip)
-                </button>
-                <div style={{ fontSize: "0.75rem", color: "var(--cyan)", textAlign: "center" }}>
-                  ✓ Unlocked & Verified on Blockchain
-                </div>
-              </div>
+            {!model.contractModelId ? (
+              <p style={{ color: "var(--text2)" }}>
+                Prototype metadata only. This record has no on-chain listing and cannot be purchased.
+              </p>
             ) : (
-              <div style={{ display: "grid", gap: "8px", width: "100%" }}>
-                <button className={`btn btn-primary ${styles.buyButton}`} onClick={handleOpenPurchase}>
-                  🛒 Purchase Access License
-                </button>
-                <button className="btn btn-secondary btn-sm" onClick={() => setActiveTab("testing")}>
-                  🧪 Test Preview in Sandbox
-                </button>
-              </div>
+              <>
+                <div className={styles.priceDisplay}>
+                  <div style={{ fontSize: "0.75rem", textTransform: "uppercase", color: "var(--text3)", fontWeight: 600 }}>
+                    License Price
+                  </div>
+                  <div className={styles.ethPrice}>Ξ {basePriceEth} ETH</div>
+                  <div className={styles.neuralPrice}>or {Math.round(basePriceEth * 1000)} NEURAL</div>
+                </div>
+
+                {hasAccess ? (
+                  <div style={{ display: "grid", gap: "8px", width: "100%" }}>
+                    <button onClick={() => downloadModelBundle(model.id, model.fileName || `${model.name || "model"}.model`, account, signer)} className={`btn btn-primary ${styles.buyButton}`}>
+                      📥 Download and decrypt model
+                    </button>
+                    <div style={{ fontSize: "0.75rem", color: "var(--cyan)", textAlign: "center" }}>
+                      ✓ Access verified on-chain
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gap: "8px", width: "100%" }}>
+                    <button className={`btn btn-primary ${styles.buyButton}`} onClick={handleOpenPurchase}>
+                      🛒 Purchase Access License
+                    </button>
+                    <button className="btn btn-secondary btn-sm" onClick={() => setActiveTab("testing")}>
+                      View inference status
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -290,9 +221,8 @@ print(response.choices[0].message.content)`,
         <div className={styles.tabs}>
           {[
             { id: "overview", label: "📋 Architecture & Specs" },
-            { id: "testing", label: "⚡ Live Interactive Playground" },
-            { id: "metrics", label: "📊 Benchmarks & Radar" },
-            { id: "api", label: "💻 Developer SDK & APIs" },
+            { id: "testing", label: "Inference status" },
+            { id: "metrics", label: "📊 Benchmarks" },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -327,7 +257,7 @@ print(response.choices[0].message.content)`,
             <div className={styles.specGrid}>
               <div className={styles.specItem}>
                 <label>Architecture</label>
-                <span>{model.architecture || "Deep Neural Network"}</span>
+                <span>{model.architecture || "Not provided"}</span>
               </div>
               <div className={styles.specItem}>
                 <label>Model Format</label>
@@ -335,18 +265,18 @@ print(response.choices[0].message.content)`,
               </div>
               <div className={styles.specItem}>
                 <label>Security Score</label>
-                <span>{model.verificationScore}/100 (SafeTensors AST Passed)</span>
+                <span>{model.verificationScore ?? "Not available"}/100 static verification score</span>
               </div>
               <div className={styles.specItem}>
                 <label>License Model</label>
-                <span>Perpetual Smart Contract NFT</span>
+                <span>Non-transferable ERC-1155 access license</span>
               </div>
               <div className={styles.specItem} style={{ gridColumn: "1 / -1" }}>
                 <label>SHA-256 Integrity Hash</label>
                 <code className={styles.codeSnippet}>{model.modelHash}</code>
               </div>
               <div className={styles.specItem} style={{ gridColumn: "1 / -1" }}>
-                <label>Decentralized IPFS CID</label>
+                <label>IPFS CID</label>
                 <code className={styles.codeSnippet}>{model.ipfsHash}</code>
               </div>
               <div className={styles.specItem}>
@@ -355,7 +285,7 @@ print(response.choices[0].message.content)`,
               </div>
               <div className={styles.specItem}>
                 <label>Verification State</label>
-                <span>{model.verificationStatus} · {model.verificationScore}/100</span>
+                <span>{model.verificationStatus} · {model.verificationScore ?? "Not available"} static score</span>
               </div>
               <div className={styles.specItem} style={{ gridColumn: "1 / -1" }}>
                 <label>Blockchain Transaction Reference</label>
@@ -369,175 +299,43 @@ print(response.choices[0].message.content)`,
       {/* Tab 2: Interactive Playground */}
       {activeTab === "testing" && (
         <div className="glass-card" style={{ padding: "28px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-            <div>
-              <h3 style={{ color: "var(--cyan)", display: "flex", alignItems: "center", gap: "8px" }}>
-                <span>⚡</span> Interactive In-Browser Model Playground
-              </h3>
-              <p style={{ color: "var(--text2)", fontSize: "0.9rem", marginTop: "4px" }}>
-                Execute test inferences with real telemetry, latency metrics, and hardware acceleration simulation.
-              </p>
-            </div>
-            <span className="badge badge-green">Engine Online</span>
-          </div>
-
-          {model.category === "Audio" ? (
-            <div style={{ marginBottom: "20px" }}>
-              <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>
-                Select Sample Audio Stream:
-              </label>
-              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "15px" }}>
-                {["clinic_record_01.wav", "investor_earnings_call.mp3", "multilingual_french_speech.wav"].map((a) => (
-                  <button
-                    key={a}
-                    type="button"
-                    className={`btn btn-sm ${activeAudioSample === a ? "btn-primary" : "btn-secondary"}`}
-                    onClick={() => setActiveAudioSample(a)}
-                  >
-                    🎵 {a}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : model.category === "Computer Vision" ? (
-            <div style={{ marginBottom: "20px" }}>
-              <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>
-                Select Image Test Sample:
-              </label>
-              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "15px" }}>
-                {["medical_scan_fp16.jpg", "pcb_defect_macro.png", "autonomous_driving_street.jpg"].map((img) => (
-                  <button
-                    key={img}
-                    type="button"
-                    className={`btn btn-sm ${selectedVisionImage === img ? "btn-primary" : "btn-secondary"}`}
-                    onClick={() => setSelectedVisionImage(img)}
-                  >
-                    🖼️ {img}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div style={{ marginBottom: "20px" }}>
-              <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>
-                Prompt / Task Description:
-              </label>
-              <textarea
-                rows={2}
-                className="glass-input"
-                style={{ width: "100%", padding: "12px", color: "#fff" }}
-                value={sandboxPrompt}
-                onChange={(e) => setSandboxPrompt(e.target.value)}
-              />
-            </div>
-          )}
-
-          <button className="btn btn-primary" onClick={handleRunInference} disabled={sandboxRunning}>
-            {sandboxRunning ? "Running Inference..." : "⚡ Execute Model Inference"}
-          </button>
-
-          {sandboxResult && (
-            <div className={styles.sandboxResultBox}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
-                <strong style={{ color: "var(--cyan)" }}>Inference Result:</strong>
-                <div style={{ fontSize: "0.85rem", color: "var(--text2)" }}>
-                  ⚡ Latency: <strong>{sandboxResult.latencyMs}ms</strong> • Device: <strong>{sandboxResult.device}</strong>
-                </div>
-              </div>
-              <pre className={styles.sandboxOutput}>{sandboxResult.output || JSON.stringify(sandboxResult, null, 2)}</pre>
-            </div>
-          )}
+          <h3 style={{ color: "var(--cyan)" }}>Inference status</h3>
+          <p style={{ color: "var(--text2)", marginTop: "12px" }}>
+            NeuralChain currently does not execute uploaded model files inside an isolated Docker sandbox. Isolated Docker inference is future scope.
+          </p>
         </div>
       )}
 
-      {/* Tab 3: Benchmarks & Radar Matrix */}
+      {/* Tab 3: Benchmarks */}
       {activeTab === "metrics" && (
         <div className="grid grid-2" style={{ gap: "24px" }}>
           <div className="glass-card" style={{ padding: "24px" }}>
-            <h3 style={{ marginBottom: "16px", color: "var(--cyan)" }}>Performance Radar Metrics</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              {[
-                { name: "Model Accuracy / F1-Score", val: 96, label: "96.4%" },
-                { name: "Inference Throughput", val: 92, label: "240 tok/s or 60 FPS" },
-                { name: "Memory Footprint Efficiency", val: 88, label: "150 MB VRAM" },
-                { name: "Zero-Knowledge Safety Score", val: 98, label: "98/100" },
-              ].map((m) => (
-                <div key={m.name}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px", fontSize: "0.9rem" }}>
-                    <span>{m.name}</span>
-                    <strong style={{ color: "var(--cyan)" }}>{m.label}</strong>
-                  </div>
-                  <div style={{ height: "8px", background: "rgba(255,255,255,0.1)", borderRadius: "4px", overflow: "hidden" }}>
-                    <div
-                      style={{
-                        width: `${m.val}%`,
-                        height: "100%",
-                        background: "linear-gradient(90deg, #6366f1, #00f5c4)",
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+            <h3 style={{ marginBottom: "8px", color: "var(--cyan)" }}>Submitted benchmark metadata</h3>
+            <p style={{ color: "var(--text2)", marginBottom: "12px" }}>
+              Benchmark values are listing metadata and have not been independently validated.
+            </p>
+            <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+              {model.benchmarks && Object.keys(model.benchmarks).length
+                ? JSON.stringify(model.benchmarks, null, 2)
+                : "No benchmark data supplied for this listing."}
+            </pre>
           </div>
 
           <div className="glass-card" style={{ padding: "24px" }}>
-            <h3 style={{ marginBottom: "16px", color: "var(--purple-light)" }}>Decentralized Lineage & Royalties</h3>
+            <h3 style={{ marginBottom: "16px", color: "var(--purple-light)" }}>Primary-sale payment allocation</h3>
             <div style={{ lineHeight: 1.6, color: "var(--text2)", fontSize: "0.95rem" }}>
               <p style={{ marginBottom: "1rem" }}>
-                This model is protected by EIP-2981 decentralized royalty graphs. Whenever downstream fine-tunes or LoRA
-                adapters are derived from this model, 10% royalties automatically stream back to the original author.
+                The contract distributes primary-sale payments to the creator and platform. Fine-tuned listings can also share a portion of a primary sale with their recorded parent creator.
+                The ERC-1155 license is non-transferable; secondary resale and ERC-2981 resale royalties are not implemented.
               </p>
               <div style={{ background: "rgba(0,0,0,0.3)", padding: "1rem", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.08)" }}>
-                <div>Creator Royalty: <strong style={{ color: "#34d399" }}>90%</strong></div>
-                <div>Lineage Upstream Fee: <strong style={{ color: "#38bdf8" }}>10%</strong></div>
-                <div>Platform Protocol Fee: <strong style={{ color: "#a78bfa" }}>10%</strong></div>
+                <div>Platform primary-sale fee: <strong style={{ color: "#a78bfa" }}>10%</strong></div>
+                <div>Creator share without a parent: <strong style={{ color: "#34d399" }}>90%</strong></div>
+                <div>Creator share with a parent: <strong style={{ color: "#34d399" }}>80%</strong></div>
+                <div>Parent share when configured: <strong style={{ color: "#38bdf8" }}>10%</strong></div>
               </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Tab 4: Developer SDK & API Snippets */}
-      {activeTab === "api" && (
-        <div className="glass-card" style={{ padding: "28px" }}>
-          <h3 style={{ marginBottom: "12px", color: "var(--cyan)" }}>One-Click Developer SDK Integration</h3>
-          <p style={{ color: "var(--text2)", marginBottom: "1.5rem" }}>
-            Copy and paste ready-to-run snippets into your Python scripts, cURL pipelines, or TypeScript backends:
-          </p>
-
-          <div style={{ display: "flex", gap: "8px", marginBottom: "1rem" }}>
-            {[
-              { id: "python", label: "Python (ONNX)" },
-              { id: "curl", label: "cURL API" },
-              { id: "nodejs", label: "Node.js SDK" },
-              { id: "openai", label: "OpenAI Client" },
-            ].map((s) => (
-              <button
-                key={s.id}
-                className={`btn btn-sm ${sdkTab === s.id ? "btn-primary" : "btn-secondary"}`}
-                onClick={() => setSdkTab(s.id)}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
-
-          <pre
-            style={{
-              background: "#090d16",
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: "10px",
-              padding: "1.25rem",
-              color: "#a5f3fc",
-              fontFamily: "monospace",
-              fontSize: "0.85rem",
-              overflowX: "auto",
-              lineHeight: 1.5,
-            }}
-          >
-            {codeSnippets[sdkTab]}
-          </pre>
         </div>
       )}
 
@@ -546,10 +344,9 @@ print(response.choices[0].message.content)`,
         isOpen={purchaseOpen}
         onClose={() => setPurchaseOpen(false)}
         model={model}
-        onPurchaseSuccess={(receipt) => {
+        onPurchaseSuccess={() => {
           setHasAccess(true);
           setHasPurchased(true);
-          setDownloadUrl(receipt.downloadUrl);
         }}
       />
     </div>

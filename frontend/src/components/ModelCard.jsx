@@ -41,7 +41,7 @@ const ModelCard = memo(({ model }) => {
       <div className={styles.cover} style={{ background: gradient }}>
         <div className={styles.coverOverlay} />
         <span className={styles.coverIcon}>{icon}</span>
-        <span className={styles.royaltyPill}>⚡ 90% Royalty</span>
+        <span className={styles.royaltyPill}>Primary-sale license</span>
       </div>
 
       <div className={styles.content}>

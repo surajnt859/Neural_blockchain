@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { uploadToIPFS, createModel, createModelVersion, getModel } from "../services/api";
+import { uploadToIPFS, createModel, getModel } from "../services/api";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useWeb3 } from "../context/Web3Context.jsx";
 import styles from "./Upload.module.css";
@@ -9,12 +9,12 @@ const CATEGORIES = ["Computer Vision", "NLP", "Generative AI", "Finance", "Audio
 
 export default function Upload() {
   const { user } = useAuth();
-  const { account, signer, connectWallet, connectDemoWallet, demoMode, isDemoWallet, addTransaction } = useWeb3();
+  const { account, signer, connectWallet } = useWeb3();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const parentModelId = searchParams.get("parentModelId");
 
-  const [form, setForm] = useState({ name: "", description: "", category: "General", price: "0.05", tags: "", version: "1.0", versionNotes: "" });
+  const [form, setForm] = useState({ name: "", description: "", category: "General", architecture: "", price: "0.05", tags: "", version: "1.0", versionNotes: "" });
   const [parentModel, setParentModel] = useState(null);
   const [file, setFile] = useState(null);
   const [step, setStep] = useState("idle"); // idle | uploading-ipfs | uploading-chain | done
@@ -54,15 +54,16 @@ export default function Upload() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!file) { setError("Please select a file to upload."); return; }
-    if (!account && !demoMode && !isDemoWallet) {
-      try {
-        await connectDemoWallet();
-      } catch {}
+    if (!user) { setError("Log in before uploading a model."); return; }
+    if (!account || !signer) { setError("Connect MetaMask before uploading a model."); return; }
+    if (!Number.isFinite(Number(form.price)) || Number(form.price) < 0.001) {
+      setError("On-chain model listings require a price of at least 0.001 ETH.");
+      return;
     }
     // Basic validation
     const maxBytes = 100 * 1024 * 1024; // 100MB
     if (file.size > maxBytes) { setError("File is too large. Max 100MB."); return; }
-    const allowed = [".pkl", ".pt", ".h5", ".onnx", ".zip", ".tar.gz"];
+    const allowed = [".onnx", ".pt", ".pth", ".h5", ".keras", ".safetensors", ".zip", ".json"];
     const nameLower = file.name.toLowerCase();
     if (!allowed.some(ext => nameLower.endsWith(ext))) {
       // allow unknown extensions but warn
@@ -71,16 +72,28 @@ export default function Upload() {
     setError(null);
 
     try {
-      // Step 1: Upload to IPFS (try real upload, but fallback in demo mode)
+      // Step 1: Verify and upload the encrypted paid-model bytes.
       setStep("uploading-ipfs");
       let ipfsHash = null;
       let verification = null;
+      let encryptedUploadId = null;
+      let keyHash = null;
       try {
         const fd = new FormData();
         fd.append("file", file);
+        fd.append("name", form.name);
+        fd.append("description", form.description);
+        fd.append("category", form.category);
+        fd.append("architecture", form.architecture);
+        fd.append("price", form.price);
+        fd.append("tags", form.tags);
+        fd.append("version", form.version);
+        if (parentModelId) fd.append("parentModelId", parentModelId);
         const ipfsRes = await uploadToIPFS(fd);
         ipfsHash = ipfsRes.data?.ipfsHash;
         verification = ipfsRes.data?.verification;
+        encryptedUploadId = ipfsRes.data?.encryptedUploadId;
+        keyHash = ipfsRes.data?.keyHash;
         if (!ipfsHash) throw new Error(ipfsRes.data?.error || "IPFS upload failed: No valid CID returned.");
         setIpfsResult(ipfsRes.data);
       } catch (ipfsErr) {
@@ -88,100 +101,94 @@ export default function Upload() {
         throw new Error(ipfsErr.response?.data?.error || ipfsErr.message || "IPFS upload failed.");
       }
 
-      // Step 2: (Optional) Record on blockchain or simulate in demo mode
+      // Step 2: Record the compact listing reference on-chain.
       setStep("uploading-chain");
       let txHash = null;
       let contractModelId = null;
-
-      if (account && signer && !isDemoWallet) {
-        try {
-          const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS;
-          const zeroAddr = "0x0000000000000000000000000000000000000000";
-          if (contractAddress && contractAddress !== zeroAddr) {
-            const { ethers } = await import("ethers");
-            const contractData = await import("../contracts/ModelMarketplace.json").catch(() => null);
-            if (contractData) {
-              const contract = new ethers.Contract(contractAddress, contractData.default.abi, signer);
-              const priceWei = ethers.parseEther(form.price || "0");
-              const tx = await contract.uploadModel(
-                form.name,
-                form.description,
-                form.category,
-                ipfsHash,
-                verification?.modelHash || "0x0",
-                "pending",
-                verification?.verificationScore || 0,
-                priceWei
-              );
-              const receipt = await tx.wait();
-              txHash = receipt.hash;
-              const listedEvent = receipt.logs
-                .map((log) => {
-                  try { return contract.interface.parseLog(log); } catch { return null; }
-                })
-                .find((event) => event?.name === "ModelListed");
-              contractModelId = listedEvent ? listedEvent.args.id.toString() : null;
-            }
-          }
-        } catch (chainErr) {
-          console.warn("Live blockchain recording skipped/failed, using cryptographic registry fallback:", chainErr.message);
-        }
+      const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS;
+      if (!contractAddress) {
+        throw new Error("Marketplace contract address is not configured.");
       }
-
-      // Keep synthetic registry IDs only for the explicit demo wallet flow.
-      if (!txHash || !contractModelId) {
-        if (!isDemoWallet) {
-          throw new Error("Blockchain listing failed. No synthetic transaction was created.");
-        }
-        contractModelId = `contract-${Date.now().toString().slice(-4)}`;
-        txHash = `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join("")}`;
+      const { ethers } = await import("ethers");
+      const contractData = await import("../contracts/ModelMarketplace.json");
+      const contract = new ethers.Contract(contractAddress, contractData.default.abi, signer);
+      if (!verification?.modelHash || !keyHash || !encryptedUploadId) {
+        throw new Error("Paid model upload did not return its integrity hash and encrypted key reference.");
       }
+      const contentHash = `0x${verification.modelHash.replace(/^0x/, "")}`;
+      const contentKeyHash = `0x${keyHash}`;
+      let tx;
+      if (parentModel?.contractModelId && /^\d+$/.test(String(parentModel.contractModelId))) {
+        tx = await contract.uploadModelWithLineage(
+          ipfsHash,
+          contentHash,
+          contentKeyHash,
+          ethers.parseEther(form.price),
+          BigInt(parentModel.contractModelId)
+        );
+      } else {
+        tx = await contract.uploadModel(
+          ipfsHash,
+          contentHash,
+          contentKeyHash,
+          ethers.parseEther(form.price)
+        );
+      }
+      const receipt = await tx.wait();
+      txHash = receipt.hash;
+      const listedEvent = receipt.logs
+        .map((log) => {
+          try { return contract.interface.parseLog(log); } catch { return null; }
+        })
+        .find((event) => event?.name === "ModelListed");
+      contractModelId = listedEvent ? listedEvent.args.id.toString() : null;
+      if (!contractModelId) throw new Error("Listing transaction succeeded but emitted no model ID.");
 
       // Step 3: Save metadata to backend
       const tags = form.tags.split(",").map(t => t.trim()).filter(Boolean);
+      const walletTimestamp = Date.now();
+      const walletSignature = await signer.signMessage(
+        `NeuralChain creator wallet:${user.id}:${account.toLowerCase()}:${walletTimestamp}`
+      );
       const modelPayload = {
         name: form.name,
+        fileName: file.name,
         description: form.description,
         category: form.category,
         ipfsHash,
         price: parseFloat(form.price) || 0,
         txHash,
         contractModelId,
-        walletAddress: account || user?.walletAddress || null,
+        walletAddress: account,
+        walletTimestamp,
+        walletSignature,
+        encryptedUploadId,
+        keyHash,
+        parentModelId: parentModel?.id || null,
         tags,
-        verificationStatus: isDemoWallet ? "verified" : "pending",
-        verificationScore: verification?.verificationScore || 94,
-        modelHash: verification?.modelHash || `0x${Date.now().toString(16)}`,
-        framework: verification?.framework || "PyTorch",
-        modelFormat: verification?.modelFormat || "SafeTensors",
-        verificationChecks: verification?.checks || { integrity: "verified", format: "safe" },
+        architecture: form.architecture,
+        architectureHash: verification?.architectureHash || null,
+        verificationStatus: verification?.verificationStatus || "pending",
+        verificationScore: verification?.verificationScore || 0,
+        modelHash: verification?.modelHash,
+        framework: verification?.framework || "Unknown",
+        modelFormat: verification?.modelFormat || "Unknown",
+        verificationChecks: verification?.checks || null,
         verificationWarnings: verification?.warnings || [],
-        version: form.version,
+        version: Number.parseFloat(form.version) || 1,
         versionNotes: form.versionNotes,
       };
 
       try {
-        if (parentModelId) await createModelVersion(parentModelId, modelPayload);
-        else await createModel(modelPayload);
+        await createModel(modelPayload);
 
-        // Record transaction in local wallet ledger
-        if (addTransaction) {
-          addTransaction({
-            type: "publish_model",
-            hash: txHash,
-            modelName: form.name,
-            amount: 0,
-            currency: "ETH",
-            status: "confirmed",
-          });
-        }
       } catch (saveErr) {
         console.error("Save metadata error:", saveErr);
         throw saveErr;
       }
 
       setStep("done");
-      setListingResult({ txHash, contractModelId, walletAddress: account || user?.walletAddress || "Demo wallet" });
+      setListingResult({ txHash, contractModelId, walletAddress: account });
     } catch (err) {
       console.error("Upload process error:", err);
       setError(err.response?.data?.error || err.message || "Upload failed.");
@@ -196,11 +203,11 @@ export default function Upload() {
       <div className="page-wrapper" style={{ paddingTop: 100, textAlign: "center", maxWidth: 600 }}>
         <div style={{ fontSize: "4rem", marginBottom: 20 }}>🎉</div>
         <h1 style={{ fontSize: "2rem", marginBottom: 12 }}>Model <span className="gradient-text">Listed!</span></h1>
-        <p style={{ color: "var(--text2)", marginBottom: 24 }}>Version {form.version} has been verified, uploaded to IPFS, and listed on the marketplace.</p>
+        <p style={{ color: "var(--text2)", marginBottom: 24 }}>Version {form.version} passed static checks, was encrypted before IPFS upload, and was listed on-chain. Moderation may still be pending.</p>
         {ipfsResult && (
           <div className={styles.successBox}>
             <div className={styles.successRow}><span>📦 IPFS Hash:</span><span className={styles.mono}>{ipfsResult.ipfsHash}</span></div>
-            <div className={styles.successRow}><span>🗄️ Storage:</span><span>{ipfsResult.provider === "pinata-cloud" ? "Pinata Cloud / IPFS" : "Local demo content store"}</span></div>
+            <div className={styles.successRow}><span>🗄️ Storage:</span><span>{ipfsResult.provider === "pinata-cloud" ? "Pinata / IPFS" : "Prototype local JSON/IPFS store"}</span></div>
             {ipfsResult.ipfsUrl && <div className={styles.successRow}><span>🔗 Content URL:</span><a className={styles.mono} href={ipfsResult.ipfsUrl} target="_blank" rel="noreferrer">Open stored object</a></div>}
             {ipfsResult.verification && (
               <>
@@ -219,7 +226,7 @@ export default function Upload() {
                 <div className={styles.successRow}><span>⛓️ Listing ID:</span><span className={styles.mono}>{listingResult.contractModelId}</span></div>
                 <div className={styles.successRow}><span>🧾 Transaction:</span><span className={styles.mono}>{listingResult.txHash}</span></div>
                 <div className={styles.successRow}><span>👛 Wallet:</span><span className={styles.mono}>{listingResult.walletAddress}</span></div>
-                <div className={styles.successRow}><span>Mode:</span><span className="badge badge-blue">{isDemoWallet ? "Demo wallet" : "MetaMask"}</span></div>
+                <div className={styles.successRow}><span>Encrypted IPFS upload:</span><span className="badge badge-blue">Key withheld until on-chain access</span></div>
               </>
             )}
             <div style={{ marginTop: 12, fontSize: "0.82rem", color: "var(--text3)", borderTop: "1px solid var(--border)", paddingTop: 10, textAlign: "left" }}>
@@ -229,7 +236,7 @@ export default function Upload() {
         )}
         <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 28 }}>
           <button className="btn btn-primary" onClick={() => navigate("/marketplace")}>🛒 View Marketplace</button>
-          <button className="btn btn-secondary" onClick={() => { setStep("idle"); setFile(null); setIpfsResult(null); setListingResult(null); setForm({ name: "", description: "", category: "General", price: "0.05", tags: "", version: "1.0", versionNotes: "" }); }}>
+          <button className="btn btn-secondary" onClick={() => { setStep("idle"); setFile(null); setIpfsResult(null); setListingResult(null); setForm({ name: "", description: "", category: "General", architecture: "", price: "0.05", tags: "", version: "1.0", versionNotes: "" }); }}>
             ⬆️ Upload Another
           </button>
         </div>
@@ -249,14 +256,8 @@ export default function Upload() {
       {/* Wallet Banner */}
       {!account && (
         <div className="alert alert-info" style={{ marginBottom: 24, justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-          <span>🦊 Connect MetaMask to record your model on-chain (optional for demo)</span>
+          <span>🦊 Connect MetaMask to submit the listing transaction.</span>
           <button className="btn btn-outline btn-sm" onClick={connectWallet}>Connect Wallet</button>
-        </div>
-      )}
-
-      {demoMode && (
-        <div className="alert alert-warning" style={{ marginBottom: 24 }}>
-          🧪 Demo Mode active — uploads and listings are simulated locally for a fast, no-setup experience.
         </div>
       )}
 
@@ -268,6 +269,7 @@ export default function Upload() {
         <div className={styles.infoStrip}>
           <span>Static trust checks</span>
           <span>IPFS ready</span>
+          <span>Encrypted paid-model storage</span>
           <span>On-chain listing</span>
         </div>
 
@@ -292,7 +294,7 @@ export default function Upload() {
             <div className={styles.dropPrompt}>
               <span style={{ fontSize: "2.5rem" }}>📦</span>
               <p><strong>Drop your model file here</strong> or click to browse</p>
-              <p style={{ fontSize: "0.82rem", color: "var(--text3)" }}>.pkl, .pt, .h5, .onnx, .zip, etc. — Max 100MB</p>
+              <p style={{ fontSize: "0.82rem", color: "var(--text3)" }}>.onnx, .pt, .pth, .h5, .keras, .safetensors, .zip, .json — Max 100MB</p>
             </div>
           )}
         </div>
@@ -330,15 +332,21 @@ export default function Upload() {
             value={form.description} onChange={handleChange} required />
         </div>
 
+        <div className="form-group">
+          <label className="form-label" htmlFor="architecture">Architecture fingerprint metadata</label>
+          <input id="architecture" name="architecture" className="form-input"
+            placeholder="e.g. ResNet-50, 50 layers, image classification"
+            value={form.architecture} onChange={handleChange} />
+        </div>
+
         <div className={styles.grid2}>
           <div className="form-group">
-            <label className="form-label" htmlFor="price">Price (ETH) — set 0 for free</label>
-            <input id="price" name="price" type="number" step="0.001" min="0" className="form-input"
+            <label className="form-label" htmlFor="price">Price (ETH)</label>
+            <input id="price" name="price" type="number" step="0.001" min="0.001" className="form-input"
               placeholder="0.05" value={form.price} onChange={handleChange} />
             {Number(form.price) > 0 && (
               <div style={{ fontSize: "0.82rem", color: "var(--cyan)", marginTop: "6px", display: "flex", gap: "8px", alignItems: "center" }}>
-                <span>💎 <strong>90% Creator Cut:</strong> Ξ {(Number(form.price) * 0.9).toFixed(4)} ETH / sale</span>
-                <span style={{ color: "var(--text3)" }}>· (10% network pool)</span>
+                <span>Primary-sale split: 90% creator / 10% platform before any parent-lineage share.</span>
               </div>
             )}
           </div>

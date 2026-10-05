@@ -144,16 +144,16 @@
 
 <body>
     <h1>NeuralChain AI Model Marketplace</h1>
-    <div class="subtitle">A compact guide to the connections, data flow, technologies, and decentralization trade-offs</div>
+    <div class="subtitle">Current hybrid architecture, data flow, implemented behavior, and prototype boundaries</div>
+    <p class="small">This HTML file is the current architecture source. The bundled PDF is a historical export and may not include these updates.</p>
 
-    <div class="box"><strong>In one sentence:</strong> React is the user interface, Express is the application/API layer, MongoDB stores searchable marketplace records, Pinata/IPFS stores model files by content address, and Solidity contracts enforce listings, payments,
-        access, royalties, governance tokens, and license NFTs on an EVM blockchain.</div>
+    <div class="box"><strong>In one sentence:</strong> NeuralChain is a hybrid AI-model marketplace. Smart contracts record model listings, creator addresses, payments, purchase events, and license access. Model files are stored on IPFS. The MongoDB and Express backend provides user accounts, searchable metadata, moderation, and download authorization.</div>
 
     <h2>1. System Map</h2>
     <div class="flow">Browser (React + Vite + ethers.js + MetaMask) | REST/JSON | signed blockchain transactions v v Express API (Node.js) ---- RPC ----> EVM chain / Hardhat / Sepolia | \ | ModelMarketplace | \ | ModelNFT + NeuralToken | v v MongoDB Atlas Pinata API ---->
         IPFS gateway / content-addressed model file (catalog, users, (optional) (CID / modelHash in the listing) purchases, reviews)
     </div>
-    <p>The chain is the trust and settlement layer. The backend is the coordination, authentication, moderation, search, download authorization, and verification layer. IPFS is the large-file layer; MongoDB is a fast application index and history store.</p>
+    <p>The EVM contract is authoritative for listing references, purchase events, payment settlement, and license access. The backend handles accounts, metadata, moderation, and joins contract data with searchable MongoDB records. IPFS stores model files, while MongoDB is an off-chain application index and history store.</p>
 
     <h2>2. What Connects to What</h2>
     <table>
@@ -179,7 +179,7 @@
         </tr>
         <tr>
             <td>Pinata/IPFS</td>
-            <td>The backend sends a verified model buffer to Pinata. Pinata returns an IPFS CID; the CID is saved with the model and placed in the contract listing.</td>
+            <td>Paid model bytes are encrypted before upload. Pinata returns an IPFS CID for the encrypted file; local deterministic file storage is only a demo fallback.</td>
             <td>HTTP API plus IPFS. Content addressing makes changed content produce a different identifier.</td>
         </tr>
         <tr>
@@ -189,18 +189,18 @@
         </tr>
         <tr>
             <td>Smart contracts</td>
-            <td><code>ModelMarketplace</code> records listings and settles ETH/NEURAL purchases; it calls <code>ModelNFT</code> to mint a license.</td>
+            <td><code>ModelMarketplace</code> records compact listing references and settles ETH/NEURAL primary sales; it calls <code>ModelNFT</code> to mint a non-transferable license.</td>
             <td>Solidity 0.8.x. Deterministic rules that do not depend on one server being honest.</td>
         </tr>
     </table>
 
     <h2>3. Upload and Listing Flow</h2>
     <ol>
-        <li>The creator selects a model in React. The browser uploads it to <code>POST /api/ipfs/upload</code>.</li>
-        <li>Multer keeps the upload in memory and limits it to 100 MB. Static verification checks extension, size, file signature, archive paths, suspicious commands, and calculates SHA-256.</li>
-        <li>With valid <code>PINATA_JWT</code> or API keys, Express calls Pinata's <code>pinFileToIPFS</code> endpoint. Pinata returns a CID. Without credentials, the demo creates a deterministic CID from the SHA-256 multihash; this is not durable pinning.</li>
-        <li>The frontend submits listing metadata and the creator signs <code>uploadModelWithLineage</code>. The contract requires a non-empty IPFS hash, a pending moderation status, and a minimum price.</li>
-        <li>The backend stores the searchable copy in MongoDB and also maintains JSON fallback data for resilient demos. The contract ID and transaction hash link the application record to the chain.</li>
+        <li>The authenticated creator selects a model in React. The browser uploads it to <code>POST /api/ipfs/upload</code>; it does not receive a decryption key.</li>
+        <li>Multer keeps the upload in memory and limits it to 100 MB. Static checks run and SHA-256 is calculated over the original bytes. Architecture fingerprint, metadata similarity, and version lineage can flag duplicates for moderation.</li>
+        <li>For a paid model, Express encrypts the file with AES-256-GCM and wraps the random content key using the required <code>MODEL_ENCRYPTION_SECRET</code>. The encrypted file is sent to Pinata or saved by the local demo fallback.</li>
+        <li>The creator signs the compact listing transaction: encrypted CID, original-file SHA-256, decryption-key hash, price, and optional parent listing ID. No plaintext key or model weights are stored on-chain.</li>
+        <li>Express joins the authoritative listing read from the contract with searchable MongoDB metadata. JSON persistence and local deterministic storage are development/demo fallbacks.</li>
         <li>An admin can approve the listing. Public marketplace queries expose only verified or legacy records.</li>
     </ol>
 
@@ -209,10 +209,10 @@
         <div class="card">
             <h3>ModelMarketplace.sol</h3>
             <ul>
-                <li>Stores model owner, name, price, IPFS CID, model hash, verification status, score, and optional parent model.</li>
+                <li>Stores model ID, creator address, encrypted-file CID, original-file SHA-256, key hash, price, optional parent listing ID, active state, and creation time.</li>
                 <li>Accepts ETH or NEURAL payments.</li>
                 <li>Uses personal, commercial, and enterprise multipliers of 1x, 3x, and 10x.</li>
-                <li>Splits revenue: 10% protocol fee; normally 90% creator share; fine-tunes also pay a 10% parent-lineage royalty.</li>
+                <li>Primary-sale split: 10% platform / 90% creator without a parent; with a parent, 10% platform / 10% parent creator / 80% listing creator.</li>
                 <li>Emits events used by the backend for receipt verification.</li>
             </ul>
         </div>
@@ -221,7 +221,7 @@
             <ul>
                 <li>ERC-1155 license token minted after purchase.</li>
                 <li>Ownership is transferred to the marketplace during deployment, allowing the marketplace to mint.</li>
-                <li>Transfers are blocked except minting and burning, so a license represents wallet-specific access rather than a tradable collectible.</li>
+                <li>Transfers are blocked except minting and burning. No secondary resale market or ERC-2981 resale royalty is implemented.</li>
             </ul>
         </div>
         <div class="card">
@@ -229,7 +229,7 @@
             <ul>
                 <li>ERC-20 token named NEURAL with permit and vote support.</li>
                 <li>Used for purchases and governance-related voting power.</li>
-                <li>The deployment script initially mints the fixed maximum supply and funds a local demo buyer.</li>
+                <li>The deployment script deploys the token contract. It does not fund a fake frontend or buyer wallet.</li>
             </ul>
         </div>
         <div class="card">
@@ -243,52 +243,50 @@
     </div>
 
     <h2>5. Purchase and Access Flow</h2>
-    <div class="flow">Buyer selects tier -> MetaMask estimates/signs transaction -> contract checks model, price, tier, and payment -> funds split to creator / parent creator / platform -> license NFT minted -> receipt event read by backend -> MongoDB purchase recorded
-        -> download or inference access allowed</div>
-    <p>ETH purchases use the transaction value. NEURAL purchases require an ERC-20 allowance and use <code>transferFrom</code>. The contract prevents a buyer from purchasing an equal or lower tier twice. The API then links the wallet, transaction hash, contract
-        model ID, and license tier to an application purchase.</p>
+    <div class="flow">Buyer selects tier -> MetaMask signs transaction -> contract checks listing, price, tier, and payment -> primary-sale split -> non-transferable ERC-1155 license minted -> backend verifies receipt -> wallet-signed access request -> contract access check -> backend releases wrapped-key decryption key</div>
+    <p>ETH purchases use the transaction value. NEURAL purchases require an ERC-20 allowance and use <code>transferFrom</code>. Backend purchase records are application history; the contract remains authoritative for listing and access. The inference/API prototype does not execute uploaded model files.</p>
 
     <div class="page-break"></div>
     <h2>6. MongoDB, Authentication, and Supporting Services</h2>
     <ul>
         <li><strong>MongoDB Atlas:</strong> stores records that are awkward or expensive to query on-chain: profiles, descriptions, tags, benchmarks, moderation notes, reviews, downloads, API keys, and purchase history. Mongoose adds schemas and indexes.</li>
-        <li><strong>JWT authentication:</strong> Express issues tokens for registered users; Axios attaches the token to API calls. Wallet addresses are also used for Web3 identity and access checks.</li>
+        <li><strong>JWT authentication:</strong> Express issues tokens for registered users; Axios attaches the token to API calls. A creator wallet is linked to the account after a wallet signature; wallet signatures and contract access checks are used for encrypted-key release.</li>
         <li><strong>Moderation:</strong> static file verification runs before upload completion, while admin review controls marketplace visibility. The verifier does not execute uploaded model code or measure real accuracy.</li>
-        <li><strong>API gateway:</strong> developer keys support model inference-style endpoints and rate-limited access after purchase.</li>
-        <li><strong>Deployment:</strong> Hardhat compiles/deploys contracts; the deployment script synchronizes ABI and addresses to frontend and backend. Express can serve the built React app as one production service.</li>
+        <li><strong>API prototype:</strong> API-key and completion endpoints can return sample responses. They do not execute uploaded model files.</li>
+        <li><strong>Local deployment:</strong> Hardhat compiles/deploys contracts; the deployment script synchronizes ABI and addresses to frontend and backend. Cloud operations and production readiness are outside this implementation.</li>
     </ul>
 
-    <h2>7. Decentralized vs Centralized</h2>
+    <h2>7. On-chain and Off-chain Responsibilities</h2>
     <table>
         <tr>
             <th>Concern</th>
-            <th>NeuralChain approach</th>
-            <th>Typical centralized marketplace</th>
+            <th>On-chain component</th>
+            <th>Off-chain component</th>
         </tr>
         <tr>
             <td>Ownership and payment</td>
-            <td>Contract state, wallet signatures, event logs, and programmable revenue splits.</td>
-            <td>Company database and private payment ledger.</td>
+            <td>Compact model references, creator addresses, payment settlement, purchase events, and license access.</td>
+            <td>Accounts, searchable listing metadata, moderation, and purchase-history joins.</td>
         </tr>
         <tr>
             <td>Artifact integrity</td>
-            <td>IPFS CID and model hash reveal whether a downloaded artifact changed.</td>
-            <td>Provider controls storage and can replace files unless extra audit controls exist.</td>
+            <td>The CID addresses the encrypted paid file; SHA-256 is used for exact original-file integrity checks.</td>
+            <td>MongoDB stores searchable verification and model metadata.</td>
         </tr>
         <tr>
             <td>Portability</td>
-            <td>Wallet-based identity and a public EVM contract can be inspected by other clients.</td>
-            <td>Account, balance, and access usually stay inside one platform.</td>
+            <td>Wallet accounts, events, and access state can be read from the configured EVM network.</td>
+            <td>Express authentication and MongoDB account/profile services coordinate the application.</td>
         </tr>
         <tr>
             <td>Creator economics</td>
-            <td>On-chain fee and lineage rules execute automatically and are publicly auditable.</td>
-            <td>Fees and royalties depend on the platform's internal enforcement.</td>
+            <td>Primary-sale payment allocation and license minting are contract transactions.</td>
+            <td>Metadata, moderation, and proposal/vote records are application data.</td>
         </tr>
         <tr>
             <td>Availability</td>
-            <td>Chain state is replicated; IPFS can be served by multiple gateways when content is pinned.</td>
-            <td>Outage or account suspension can remove access to the service.</td>
+            <td>Contract state is on the selected EVM network; IPFS content is available only while pinned and retrievable.</td>
+            <td>API, database, moderation, and key-envelope storage depend on configured services.</td>
         </tr>
         <tr>
             <td>Trade-offs</td>
@@ -297,15 +295,16 @@
         </tr>
     </table>
 
-    <h2>8. Important Boundary</h2>
-    <div class="box">This project is hybrid, not fully decentralized. MongoDB, Express, Pinata, moderation, JWT authentication, and download authorization are centralized services. The decentralized core is the wallet-signed contract state and payment settlement, plus
-        content-addressed IPFS references. A production deployment should pin content with a durable Pinata plan or multiple pinning providers, use a real testnet/mainnet RPC, remove demo fallbacks, protect secrets, and add an isolated model execution
-        sandbox.</div>
+    <h2>8. Implemented, Prototype, and Future Scope</h2>
+    <div class="box"><strong>Implemented:</strong> compact contract listings, primary-sale payment settlement, non-transferable ERC-1155 licenses, paid-file encryption, signed access requests, SHA-256 integrity checks, and metadata moderation.</div>
+    <div class="box"><strong>Prototype/off-chain:</strong> MongoDB/Express marketplace services, local Hardhat demonstrations, JSON persistence and local deterministic file storage fallbacks, governance proposals/votes, and sample API responses.</div>
+    <div class="box"><strong>Future scope:</strong> NeuralChain currently does not execute uploaded model files inside an isolated Docker sandbox. Isolated Docker inference is future scope. Managed production key storage, durable pinning, and operational hardening also require separate implementation.</div>
+    <p>Governance proposals and votes are stored off-chain; there is no on-chain DAO contract or treasury. Licenses are non-transferable; secondary resale and ERC-2981 resale royalties are not implemented.</p>
 
     <h2>9. Technology Summary</h2>
     <p><strong>Languages:</strong> JavaScript (React frontend and Node.js backend), Solidity (EVM contracts), JSON (ABIs, configuration, fallback data), HTML/CSS (this guide), and shell configuration for deployment.</p>
     <p><strong>Core libraries and tools:</strong> React, Vite, Axios, ethers.js, Express, Mongoose, Multer, JWT, Hardhat, OpenZeppelin, MetaMask, MongoDB Atlas, Pinata, and IPFS.</p>
-    <footer>Prepared from the current NeuralChain repository implementation. Local/demo fallbacks are called out where they differ from production behavior.</footer>
+    <footer>Architecture documentation for the current NeuralChain repository. Local and prototype behavior is identified separately from implemented contract behavior.</footer>
 </body>
 
 </html>

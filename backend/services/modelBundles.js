@@ -7,7 +7,7 @@ const REAL_AI_MODELS = [
   {
     id: "model-whisper-tiny-onnx",
     name: "Whisper-Tiny Multi-lingual Transcriber",
-    description: "Production-ready OpenAI Whisper-Tiny quantized to ONNX for ultra-fast, offline multi-lingual speech-to-text transcription and translation with zero external cloud dependencies.",
+    description: "Prototype catalog metadata for Whisper-Tiny. No model weights are bundled or executed by NeuralChain.",
     category: "Audio",
     price: 0.012,
     framework: "ONNX",

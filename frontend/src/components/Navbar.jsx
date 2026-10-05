@@ -10,13 +10,10 @@ export default function Navbar({ onOpenCommandPalette }) {
   const { user, logout } = useAuth();
   const {
     account,
-    walletType,
-    isDemoWallet,
-    isMetaMask,
     ethBalance,
     neuralBalance,
+    isDemo,
     connectMetaMask,
-    connectDemoWallet,
     disconnectWallet,
     connecting,
     error,
@@ -168,7 +165,7 @@ export default function Navbar({ onOpenCommandPalette }) {
               >
                 <span className={styles.walletDot} />
                 <span className={styles.walletLabel}>
-                  {isDemoWallet ? "⚡ Demo Wallet" : "🦊 MetaMask"}
+                  {isDemo ? "Hardhat demo" : "MetaMask"}
                 </span>
                 <span className={styles.walletAddr}>{formatAddr(account)}</span>
                 <span className={styles.walletBalancesInline} aria-label={`Balance: ${ethBalance} ETH, ${neuralBalance} NEURAL`}>
@@ -182,7 +179,7 @@ export default function Navbar({ onOpenCommandPalette }) {
                 <div className={styles.walletDropdown}>
                   <div className={styles.walletDropdownHeader}>
                     <div style={{ fontSize: "0.75rem", color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                      Active Web3 Account
+                      {isDemo ? "Hardhat demo account" : "Active Web3 Account"}
                     </div>
                     <div className={styles.dropdownAddress}>{account}</div>
                   </div>
@@ -190,11 +187,11 @@ export default function Navbar({ onOpenCommandPalette }) {
                   <div className={styles.walletBalances}>
                     <div className={styles.balanceRow}>
                       <span style={{ color: "var(--text2)" }}>ETH Balance:</span>
-                      <strong style={{ color: "var(--cyan)" }}>Ξ {ethBalance} ETH</strong>
+                      <strong style={{ color: "var(--cyan)" }}>Ξ {ethBalance ?? "—"} ETH</strong>
                     </div>
                     <div className={styles.balanceRow}>
                       <span style={{ color: "var(--text2)" }}>NEURAL Balance:</span>
-                      <strong style={{ color: "var(--purple-light)" }}>{neuralBalance} NEURAL</strong>
+                      <strong style={{ color: "var(--purple-light)" }}>{neuralBalance ?? "—"} NEURAL</strong>
                     </div>
                   </div>
 
@@ -208,33 +205,8 @@ export default function Navbar({ onOpenCommandPalette }) {
                         setWalletDropdownOpen(false);
                       }}
                     >
-                      💳 Open Wallet & Faucet Hub
+                      💳 Open Wallet
                     </Link>
-                    {isDemoWallet ? (
-                      <button
-                        className="btn btn-outline btn-sm"
-                        style={{ width: "100%", justifyContent: "center" }}
-                        onClick={() => {
-                          soundFx.playClick();
-                          connectMetaMask();
-                          setWalletDropdownOpen(false);
-                        }}
-                      >
-                        🦊 Switch to MetaMask
-                      </button>
-                    ) : (
-                      <button
-                        className="btn btn-outline btn-sm"
-                        style={{ width: "100%", justifyContent: "center" }}
-                        onClick={() => {
-                          soundFx.playClick();
-                          connectDemoWallet();
-                          setWalletDropdownOpen(false);
-                        }}
-                      >
-                        ⚡ Switch to Instant Demo Wallet
-                      </button>
-                    )}
                     <button
                       className="btn btn-ghost btn-sm"
                       style={{ width: "100%", color: "#ef4444", justifyContent: "center" }}
@@ -271,11 +243,6 @@ export default function Navbar({ onOpenCommandPalette }) {
                     <strong>Choose wallet</strong>
                     <div className={styles.dropdownHint}>Connect a wallet to purchase, publish, and manage models.</div>
                   </div>
-                  {import.meta.env.DEV && (
-                    <button className="btn btn-secondary btn-sm" onClick={() => { connectDemoWallet(); setWalletDropdownOpen(false); }} disabled={connecting}>
-                      ⚡ {connecting ? "Connecting..." : "Local Demo Wallet"}
-                    </button>
-                  )}
                   <button className="btn btn-outline btn-sm" onClick={() => { connectMetaMask(); setWalletDropdownOpen(false); }} disabled={connecting}>
                     🦊 MetaMask
                   </button>

@@ -25,6 +25,10 @@ const userSchema = new mongoose.Schema({
         type: String,
         default: null,
     },
+    walletVerified: {
+        type: Boolean,
+        default: false,
+    },
     role: {
         type: String,
         enum: ["buyer", "seller", "creator", "admin"],
